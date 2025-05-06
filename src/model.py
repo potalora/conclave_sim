@@ -45,7 +45,6 @@ class TransitionModel:
             ValueError: If elector_data is empty or missing required columns.
             KeyError: If 'beta_weight' is missing from parameters.
         """
-        print("Calculating ideology-based transition probabilities...")
 
         if elector_data.empty:
             raise ValueError("Cannot calculate probabilities with zero electors.")

@@ -31,6 +31,12 @@ def main():
         default=0.5,
         help="Beta weight for ideology influence in the transition model (default: 0.5)."
     )
+    # AI: Add verbosity flag
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true", # Set to True if flag is present
+        help="Print detailed round-by-round simulation progress."
+    )
     # TODO: Add more arguments for other model parameters as needed
 
     args = parser.parse_args()
@@ -59,7 +65,8 @@ def main():
         results_df, aggregate_stats = run_monte_carlo_simulation(
             num_simulations=args.num_simulations,
             elector_data=elector_df,
-            model_parameters=model_parameters
+            model_parameters=model_parameters,
+            verbose=args.verbose # AI: Pass verbose flag
         )
         print("\n--- Simulation Complete ---")
 

@@ -15,6 +15,7 @@ def run_monte_carlo_simulation(
     num_simulations: int,
     elector_data: pd.DataFrame,
     model_parameters: Dict[str, Any],
+    verbose: bool = False
 ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """Runs the Monte Carlo simulation for the conclave.
 
@@ -23,6 +24,7 @@ def run_monte_carlo_simulation(
         elector_data: DataFrame containing elector profiles (e.g., id, ideology).
                       Must include a unique 'elector_id' column.
         model_parameters: Dictionary of parameters for the TransitionModel.
+        verbose: If True, print detailed round-by-round progress.
 
     Returns:
         A tuple containing:
@@ -44,7 +46,8 @@ def run_monte_carlo_simulation(
 
     num_electors = len(elector_data)
     required_votes = int(np.ceil(num_electors * REQUIRED_MAJORITY_FRACTION))
-    print(f"Simulating with {num_electors} electors. Required votes for majority: {required_votes}")
+    if verbose:
+        print(f"Simulating with {num_electors} electors. Required votes for majority: {required_votes}")
 
     # Initialize the transition model
     transition_model = TransitionModel(parameters=model_parameters)
@@ -55,7 +58,8 @@ def run_monte_carlo_simulation(
 
     # --- Main Simulation Loop ---
     for sim_num in range(1, num_simulations + 1):
-        print(f"\n--- Simulation Run {sim_num} / {num_simulations} ---")
+        if verbose:
+            print(f"\n--- Simulation Run {sim_num} / {num_simulations} ---")
         round_num = 1
         winner_found = False
         winner_id = None
@@ -65,7 +69,8 @@ def run_monte_carlo_simulation(
         candidate_ids = elector_data['elector_id'].tolist()
 
         while round_num <= MAX_ROUNDS and not winner_found:
-            print(f"  Round {round_num}...")
+            if verbose:
+                print(f"  Round {round_num}...")
 
             # 1. Calculate Transition Probabilities (Elector -> Candidate)
             # Returns a matrix (num_electors x num_candidates)
@@ -98,11 +103,14 @@ def run_monte_carlo_simulation(
                 if top_votes >= required_votes:
                     winner_id = top_candidate
                     winner_found = True
-                    print(f"    Winner found! Candidate {winner_id} received {top_votes} votes.")
+                    if verbose:
+                        print(f"    Winner found! Candidate {winner_id} received {top_votes} votes.")
                 else:
-                    print(f"    No winner yet. Top candidate {top_candidate} has {top_votes} votes (need {required_votes}).")
+                    if verbose:
+                        print(f"    No winner yet. Top candidate {top_candidate} has {top_votes} votes (need {required_votes}).")
             else:
-                 print(f"    No votes cast in round {round_num}.") # Should not happen with current logic
+                 if verbose:
+                    print(f"    No votes cast in round {round_num}.") # Should not happen with current logic
 
             # 5. Update State (prepare for next round if no winner)
             if not winner_found:
@@ -113,10 +121,12 @@ def run_monte_carlo_simulation(
         # Record simulation outcome
         if winner_found:
              result = {'simulation_id': sim_num, 'winner_id': winner_id, 'rounds_taken': round_num, 'status': 'Success'}
-             print(f"--- Simulation Run {sim_num} finished: Winner={winner_id}, Rounds={round_num} ---")
+             if verbose:
+                print(f"--- Simulation Run {sim_num} finished: Winner={winner_id}, Rounds={round_num} ---")
         else:
              result = {'simulation_id': sim_num, 'winner_id': None, 'rounds_taken': MAX_ROUNDS, 'status': 'Max Rounds Reached'}
-             print(f"--- Simulation Run {sim_num} finished: No winner after {MAX_ROUNDS} rounds ---")
+             if verbose:
+                print(f"--- Simulation Run {sim_num} finished: No winner after {MAX_ROUNDS} rounds ---")
 
         simulation_results.append(result)
 
