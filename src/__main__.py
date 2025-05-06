@@ -6,12 +6,17 @@ import os
 import pandas as pd
 import numpy as np
 import traceback
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 
 # AI: Assuming src is in PYTHONPATH or running with python -m src
 # Remove ingest import, load directly
 # from .ingest import load_elector_data
 from .simulate import run_monte_carlo_simulation
-from .ideology import calculate_papacy_score # AI: Import ideology function
+from .ideology import calculate_papacy_score, calculate_llm_score # AI: Import ideology functions
 
 def main():
     """Main entry point for running the simulation from the command line."""
@@ -81,6 +86,11 @@ def main():
         # We will later calculate a composite score and potentially replace
         # the placeholder 'ideology_score' column before simulation.
         # For now, the simulation uses the placeholder score from the CSV.
+
+        # AI: Add LLM Score Calculation
+        log.info("Calculating LLM-based ideology scores (requires GOOGLE_API_KEY)...")
+        elector_df = calculate_llm_score(elector_df)
+
     except KeyError as e:
         print(f"Error calculating ideology scores: Missing required column - {e}", file=sys.stderr)
         sys.exit(1)
