@@ -41,7 +41,7 @@
 | Phase       | Duration | Deliverables                          |
 | ----------- | -------- | ------------------------------------- |
 | **Phase 0** | 1 week   | Repo + Windsurf project setup; P0 MVP |
-| **Phase 1** | 2 weeks  | Elector ingestion; parameter module   |
+| **Phase 1** | 2 weeks  | Dataset Creation & Initial Modeling  |
 | **Phase 2** | 2 weeks  | Diagnostics; basic visualizations     |
 | **Phase 3** | 2 weeks  | Scenario runner; extended tests       |
 | **Phase 4** | 1 week   | Full docs; example notebooks          |
@@ -165,3 +165,29 @@ Decide on these core fields for each elector:
 [4]: https://www.vatican.va/archive/aas/index.htm
 [5]: https://en.wikipedia.org/wiki/List_of_current_cardinals
 [6]: https://en.wikipedia.org/wiki/Cardinals_created_by_Francis
+
+---
+
+## Phase 1: Dataset Creation & Initial Modeling (Target: Week 1-2)
+
+**Goal:** Establish a robust dataset of **current** cardinal electors and implement foundational preference and transition models.
+
+**Key Tasks:**
+
+1. **Elector Roster Ingestion (`src/ingest.py`):**
+    * Define a stable CSV schema for elector attributes (ID, Name, Region, DOB, Ordination Date, Ideology Score).
+    * Implement `load_elector_data` function.
+    * Implement web scraping (`requests`, `beautifulsoup4`) for:
+        * GCatholic (Living cardinals): `scrape_gcatholic_roster`
+        * Catholic-Hierarchy (Elector cardinals): `scrape_catholic_hierarchy_roster`
+    * Focus: Create a consolidated dataset (`data/electors_current_consolidated.csv`) by merging scraped data with manual inputs (like ideology scores). Prioritize completeness and accuracy for *current* electors.
+    * Defer historical elector lists (e.g., for 2013, 2005 conclaves) to later phase.
+
+2. **Preference Model (`src/model.py`):**
+    * Implement `PreferenceModel` class.
+
+**Backtesting:** Once the simulation for current electors is validated, create datasets for historical conclaves (e.g., 2005, 2013) and run the simulation to compare outcomes against reality.
+
+**Geopolitical Factors:** Incorporate more nuanced regional dynamics beyond simple affinity.
+
+**Papal Influence:** Model the potential impact of the previous Pope's appointments.
