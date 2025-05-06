@@ -22,6 +22,7 @@ import subprocess
 import sys
 from pathlib import Path
 import importlib # To dynamically import match_names
+from datetime import datetime # AI: Add datetime import
 
 # --- Constants ---
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -385,7 +386,46 @@ def _preprocess_ch_for_merge(df_ch: pd.DataFrame) -> pd.DataFrame:
     required_cols = ['ch_id', 'ch_name', 'ch_age', 'ch_birthdate', 'ch_elevated_date', 'ch_title', 'ProfileLink']
     available_cols = [col for col in required_cols if col in df.columns]
     log.info(f"Selected CH columns for merge: {available_cols}")
-    return df[available_cols]
+
+    # AI: Add appointing_pope column based on ch_elevated_date
+    if 'ch_elevated_date' in df.columns:
+        log.info("Inferring appointing pope from 'ch_elevated_date'.")
+        df['appointing_pope'] = df['ch_elevated_date'].apply(_infer_appointing_pope)
+        log.debug(f"Sample appointing popes:\n{df[['ch_id', 'ch_name', 'ch_elevated_date', 'appointing_pope']].head()}")
+    else:
+        log.warning("'ch_elevated_date' column not found, cannot infer appointing pope.")
+        df['appointing_pope'] = None # Ensure column exists even if empty
+
+    return df[available_cols + ['appointing_pope']]
+
+
+_REIGN_DATES = {
+    'John Paul II': (datetime(1978, 10, 16), datetime(2005, 4, 2)),
+    'Benedict XVI': (datetime(2005, 4, 19), datetime(2013, 2, 28)),
+    'Francis': (datetime(2013, 3, 13), datetime.now()) # Assume present for end
+}
+
+def _infer_appointing_pope(elevation_date_str: Optional[str]) -> Optional[str]:
+    """Infers appointing Pope based on elevation date string."""
+    if pd.isna(elevation_date_str):
+        return None
+
+    try:
+        # Common date formats from CH data seem to be like '22 Feb 2014'
+        elevation_date = pd.to_datetime(elevation_date_str, errors='coerce')
+        if pd.isna(elevation_date):
+             log.warning(f"Could not parse elevation date: {elevation_date_str}")
+             return None
+
+        for pope, (start, end) in _REIGN_DATES.items():
+            if start <= elevation_date <= end:
+                return pope
+        log.warning(f"Elevation date {elevation_date_str} ({elevation_date}) outside known reigns.")
+        return None # Or handle differently if needed
+    except Exception as e:
+        log.error(f"Error inferring pope for date '{elevation_date_str}': {e}")
+        return None
+
 
 def _merge_datasets(df_gc: pd.DataFrame, df_ch: pd.DataFrame, matches: List[Dict[str, int]]) -> Optional[pd.DataFrame]:
     """Merges the preprocessed GC and CH DataFrames based on LLM matches."""

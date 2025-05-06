@@ -11,6 +11,7 @@ import traceback
 # Remove ingest import, load directly
 # from .ingest import load_elector_data
 from .simulate import run_monte_carlo_simulation
+from .ideology import calculate_papacy_score # AI: Import ideology function
 
 def main():
     """Main entry point for running the simulation from the command line."""
@@ -71,6 +72,21 @@ def main():
         print(f"Loaded {len(elector_df)} electors successfully.")
     except (FileNotFoundError, ValueError, pd.errors.EmptyDataError, Exception) as e:
         print(f"Error loading elector data: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # --- 1b. Calculate Ideology Proxies --- (AI: Added Step)
+    try:
+        # Calculate papacy score (more proxies will be added here)
+        elector_df = calculate_papacy_score(elector_df)
+        # We will later calculate a composite score and potentially replace
+        # the placeholder 'ideology_score' column before simulation.
+        # For now, the simulation uses the placeholder score from the CSV.
+    except KeyError as e:
+        print(f"Error calculating ideology scores: Missing required column - {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred during ideology calculation: {e}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
     # --- 2. Define Model Parameters ---
