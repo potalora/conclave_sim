@@ -1,0 +1,75 @@
+## Code & Collaboration Rules for Windsurf Conclave Simulation
+
+### 1. Repository Structure
+
+```
+/ (root)
+├─ data/                  # Raw and processed elector CSVs
+├─ src/                   # Core simulation modules
+│  ├─ ingest.py           # Elector roster loader
+│  ├─ model.py            # Preference & transition models
+│  ├─ simulate.py         # Monte Carlo engine
+│  └─ viz.py              # Plotting and reporting
+├─ notebooks/             # Example Jupyter notebooks and demos
+├─ tests/                 # Pytest suites and test data fixtures
+├─ docs/                  # Markdown documentation
+│  └─ onboarding.md       # Setup and Windsurf usage guide
+├─ .windsurf/             # Windsurf project metadata and flows
+├─ .github/               # CI workflows and issue templates
+└─ README.md              # Project overview and quickstart
+```
+
+### 2. Coding Conventions
+
+* **Language & Version:** Python 3.10+ with [PEP 484](https://www.python.org/dev/peps/pep-0484/) type hints everywhere.
+* **Formatting:** Auto-format with Black (`black --line-length 88`).
+* **Linting:** Flake8 for style; MyPy for type checking.
+* **Docstrings:** Google style; every public function/class must include `Args`, `Returns`, and `Raises` sections.
+* **Naming:** `snake_case` for functions/variables, `PascalCase` for classes.
+* **Library Versions** Use context7 MCP to manage library versions and get latest docs. Always reference these docs instead of your internal knowledge.
+
+### 3. Branching & Git Workflow
+
+* **Main Branch (`main`):** Protected; no direct commits.
+* **Feature Branches:** `feature/<short-name>` (e.g., `feature/transition-matrix`).
+* **Hotfix Branches:** `hotfix/<issue-number>`.
+* **Pull Requests:** Require at least two approvals, passing CI, and linked issue.
+* **Commit Messages:** Follow Conventional Commits (e.g., `feat(sim): add runoff logic`).
+
+### 4. Windsurf-Specific Practices
+
+* **Cascade Flows:** Store AI workflows under `.windsurf/cascade-<feature>.json`.
+* **AI-Generated Code:** Annotate with `# AI:` comment blocks; review and refactor as needed.
+* **Multi-file Refactoring:** Use `AI Refactor All` to ensure consistency across modules.
+* **Inline Suggestions:** Accept or reject AI suggestions explicitly to maintain auditability.
+
+### 5. Testing & Continuous Integration
+
+* **Coverage:** Minimum 90% for unit tests; functional tests for known conclave scenarios (2005, 2013).
+* **Test Framework:** Pytest with fixtures for small elector sets and scenario validations.
+* **CI Pipeline (GitHub Actions):**
+
+  1. `lint`: Black + Flake8
+  2. `type-check`: MyPy
+  3. `test`: Pytest
+  4. `docs`: Markdown lint
+* **Snyk Scan:** Weekly dependency vulnerability checks.
+
+### 6. Issue Management & Documentation
+
+* **Issue Labels:** `bug`, `enhancement`, `discussion`, `documentation`.
+* **Milestones:** Align with product plan phases.
+* **PR Templates:** Checklist must include tests, type checks, docs update, and AI annotation review.
+* **Docs:** Keep docs in `docs/`; update `README.md` for major changes.
+
+### 7. Security & Data Privacy
+
+* **Secrets Management:** Use GitHub Secrets; never commit credentials.
+* **Data Handling:** Elector IDs anonymized in shared outputs; raw data in `data/` must not contain PII.
+* **Audit Logs:** Record cascade flow changes and AI-generated code reviews in project history.
+
+### 8. Onboarding & Support
+
+* **Setup Guide:** `docs/onboarding.md` covers environment setup, Windsurf install, dependencies.
+* **Office Hours:** Weekly sync every Thursday at 10 AM ET (Slack #simulation-dev).
+* **Support Channels:** Use GitHub Discussions for Q\&A; Slack channel for real-time help.
