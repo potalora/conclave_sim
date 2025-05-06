@@ -1,11 +1,10 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple, List, Optional
 import time
 
 # AI: Import necessary components from other modules
 from .model import TransitionModel
-# from .ingest import load_elector_data # Keep commented until elector_data is used differently
 
 # Constants
 MAX_ROUNDS = 100  # Maximum rounds per simulation before declaring no winner
@@ -46,15 +45,19 @@ def run_monte_carlo_simulation(
 
     num_electors = len(elector_data)
     required_votes = int(np.ceil(num_electors * REQUIRED_MAJORITY_FRACTION))
+    # Ensure elector_ids are readily available for mapping
+    elector_ids_list = elector_data['elector_id'].tolist()
+    if len(set(elector_ids_list)) != num_electors:
+        raise ValueError("Duplicate elector_ids found in elector_data.")
+
     if verbose:
         print(f"Simulating with {num_electors} electors. Required votes for majority: {required_votes}")
 
     # Initialize the transition model
     transition_model = TransitionModel(parameters=model_parameters)
-    # print(f"TransitionModel initialized with parameters: {model_parameters}") # Removed redundant print
 
     # Prepare results storage
-    simulation_results: List[Dict[str, Any]] = [] # More robust than appending to df
+    simulation_results: List[Dict[str, Any]] = []
 
     # --- Main Simulation Loop ---
     for sim_num in range(1, num_simulations + 1):
@@ -63,58 +66,71 @@ def run_monte_carlo_simulation(
         round_num = 1
         winner_found = False
         winner_id = None
-        current_votes_summary = pd.DataFrame() # Placeholder for potential future model input
-        # In this basic model, candidates are all electors
-        # Use elector_id as the candidate identifier
-        candidate_ids = elector_data['elector_id'].tolist()
+        # Tracks {voter_id: candidate_id} from the *previous* round
+        previous_votes_dict: Optional[Dict[Any, Any]] = None
+
+        # Assume all electors are candidates for now
+        candidate_ids = elector_ids_list # Use the list directly
 
         while round_num <= MAX_ROUNDS and not winner_found:
             if verbose:
                 print(f"  Round {round_num}...")
 
             # 1. Calculate Transition Probabilities (Elector -> Candidate)
-            # Returns a matrix (num_electors x num_candidates)
-            # In this basic model, candidates are all electors
+            # Pass the dictionary of votes from the previous round for stickiness
             probabilities = transition_model.calculate_transition_probabilities(
-                current_votes=current_votes_summary, elector_data=elector_data
+                elector_data=elector_data,
+                current_votes=previous_votes_dict
             )
-            # Ensure probabilities sum to 1 for each elector (row-wise)
-            # probabilities /= probabilities.sum(axis=1, keepdims=True)
 
             # 2. Simulate Voting
-            votes_cast = []
+            votes_cast = [] # Stores the candidate ID each elector voted for in *this* round
             for elector_idx in range(num_electors):
+                # Get the actual ID of the voter
+                voter_id = elector_ids_list[elector_idx]
                 # Choose a candidate based on the probability distribution for this elector
-                # np.random.choice requires probabilities to sum to 1
                 prob_dist = probabilities[elector_idx]
                 # Normalize probabilities due to potential floating point inaccuracies
-                prob_dist /= prob_dist.sum()
-                voted_for = np.random.choice(candidate_ids, p=prob_dist)
-                votes_cast.append(voted_for)
+                prob_dist_sum = prob_dist.sum()
+                if prob_dist_sum > 0:
+                    prob_dist /= prob_dist_sum
+                else:
+                    # Handle case where all probabilities are zero (should be rare)
+                    print(f"Warning: Zero probability sum for elector {voter_id} (idx {elector_idx}). Assigning uniform vote.")
+                    prob_dist = np.ones(len(candidate_ids)) / len(candidate_ids)
+
+                # Use p=prob_dist which MUST sum to 1
+                voted_for_candidate_id = np.random.choice(candidate_ids, p=prob_dist)
+                votes_cast.append(voted_for_candidate_id)
+
+            # Create dictionary mapping elector_id -> voted_candidate_id for this round
+            current_round_votes_dict = {
+                elector_ids_list[i]: votes_cast[i] for i in range(num_electors)
+            }
 
             # 3. Tally Votes
             vote_counts = pd.Series(votes_cast).value_counts()
-            # print(f"    Vote Counts: {vote_counts.to_dict()}") # Can be verbose
 
             # 4. Check for Winner
             if not vote_counts.empty:
-                top_candidate = vote_counts.index[0]
+                top_candidate_id = vote_counts.index[0]
                 top_votes = vote_counts.iloc[0]
                 if top_votes >= required_votes:
-                    winner_id = top_candidate
+                    winner_id = top_candidate_id
                     winner_found = True
                     if verbose:
                         print(f"    Winner found! Candidate {winner_id} received {top_votes} votes.")
                 else:
                     if verbose:
-                        print(f"    No winner yet. Top candidate {top_candidate} has {top_votes} votes (need {required_votes}).")
+                        print(f"    No winner yet. Top candidate {top_candidate_id} has {top_votes} votes (need {required_votes}).")
             else:
                  if verbose:
-                    print(f"    No votes cast in round {round_num}.") # Should not happen with current logic
+                    print(f"    No votes cast in round {round_num}.")
 
             # 5. Update State (prepare for next round if no winner)
             if not winner_found:
-                # Placeholder for updating current_votes_summary if model needs it
+                # Update the dictionary for the next round's stickiness calculation
+                previous_votes_dict = current_round_votes_dict
                 round_num += 1
             # If winner found, loop will terminate
 
@@ -161,7 +177,5 @@ def run_monte_carlo_simulation(
         aggregate_stats['success_rate'] = len(successful_sims) / num_simulations
     else:
         print("No simulation results to aggregate.")
-
-    # raise NotImplementedError("Core simulation logic/aggregation not yet implemented.")
 
     return results_df, aggregate_stats
