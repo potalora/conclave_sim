@@ -6,7 +6,7 @@ import os
 
 # Assuming the test is run from the root directory or pytest handles paths
 # Adjust the import path if necessary based on your test runner setup
-from src.ingest import load_elector_data
+from src.ingest import load_elector_data, standardize_names
 
 # Define the path to the sample data relative to the test file or project root
 # This assumes tests are run from the project root directory
@@ -31,6 +31,25 @@ def sample_elector_file():
     # Teardown: Clean up created dummy files
     os.remove(EMPTY_CSV)
     os.remove(NOT_CSV)
+
+@pytest.fixture
+def sample_merged_df() -> pd.DataFrame:
+    """Provides a sample DataFrame similar to the merged electors data."""
+    data = {
+        'gc_id': [1, 2, 3],
+        'gc_description': ['Card. Name A', 'Card. Name B', 'Card. Name C'],
+        'gc_age': [70, 75, 65],
+        'gc_birthdate': ['1955-01-01', '1950-02-02', '1960-03-03'],
+        'ch_id': [101, 102, 103],
+        'ch_name': ['Name A, Cardinal First', 'Name B, Cdl. Second', 'Name C, Card.'],
+        'ch_age': [70, 75, 65],
+        'ch_birthdate': ['1955-01-01', '1950-02-02', '1960-03-03'],
+        'ch_elevated_date': ['2010-01-01', '2012-02-02', '2015-03-03'],
+        'ch_title': ['Bishop of Place', 'Archbishop of Area', 'Priest'],
+        'ProfileLink': ['link1', 'link2', 'link3'],
+        'match_type': ['llm', 'llm', 'llm'] # Added column that might exist
+    }
+    return pd.DataFrame(data)
 
 # --- Test Cases ---
 
@@ -62,4 +81,15 @@ def test_load_elector_data_empty_csv(sample_elector_file): # Fixture needed for 
     with pytest.raises(ValueError, match="Error: CSV file .* contains no data"): # Check error message
         load_elector_data(EMPTY_CSV)
 
+def test_standardize_names(sample_merged_df: pd.DataFrame):
+    """Tests the standardize_names function from src/ingest.py."""
+    standardized_df = standardize_names(sample_merged_df.copy()) # Use copy to avoid modifying fixture
+    expected_names = ['Name A', 'Name B', 'Name C']
+    assert 'standardized_name' in standardized_df.columns
+    assert standardized_df['standardized_name'].tolist() == expected_names
+    # Check that original ch_name is kept
+    assert 'ch_name' in standardized_df.columns
+
 # TODO: Add tests for schema validation once implemented
+# TODO: Add more tests for load_data, load_llm_matches, preprocess_*, merge_data etc. from src/ingest.py
+# Consider creating fixture files in tests/fixtures/ for CSV/JSON data.

@@ -1,212 +1,546 @@
-# AI: src/match_names.py
-# Purpose: Use Gemini LLM to match cardinal names between GCatholic and Catholic Hierarchy datasets.
+# AI: Refactored src/match_names.py
+"""
+Leverages the Gemini LLM to match cardinal names between GCatholic and
+Catholic Hierarchy datasets.
+
+Reads raw scraped CSV files, preprocesses them slightly, generates a prompt
+for the LLM, calls the Gemini API, parses the JSON response containing
+matched IDs, and saves the matches to a JSON file.
+
+Requires the GOOGLE_API_KEY environment variable to be set.
+"""
 
 import os
 import pandas as pd
 import google.generativeai as genai
 import json
 import time
+import sys
+from pathlib import Path
+from typing import List, Dict, Tuple, Optional, Any
+import logging
 
-# --- Configuration --- 
-DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
-GC_RAW_PATH = os.path.join(DATA_DIR, 'scraped_gcatholic_raw.csv')
-CH_RAW_PATH = os.path.join(DATA_DIR, 'scraped_ch_raw.csv')
-MATCH_OUTPUT_PATH = os.path.join(DATA_DIR, 'llm_matched_pairs.json')
+# Initialize logging
+log = logging.getLogger(__name__)
 
-# --- Load API Key --- 
-# IMPORTANT: Set the GOOGLE_API_KEY environment variable before running.
+# --- Constants ---
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_DIR = BASE_DIR / "data"
+GC_RAW_PATH = DATA_DIR / "scraped_gcatholic_raw.csv"
+CH_RAW_PATH = DATA_DIR / "scraped_ch_raw.csv"
+MATCH_OUTPUT_PATH = DATA_DIR / "llm_matched_pairs.json"
+LLM_MATCHES_PATH = MATCH_OUTPUT_PATH
+GEMINI_MODEL_NAME = "gemini-2.5-flash-preview-04-17" # Use the latest flash model
+MAX_LLM_RETRIES = 3
+RETRY_SLEEP_BASE_SECONDS = 5
+
+# --- API Key Configuration ---
 try:
-    GOOGLE_API_KEY = os.environ['GOOGLE_API_KEY']
+    # AI: Using os.getenv for safer access, allowing None if not set
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+    if not GOOGLE_API_KEY:
+        raise ValueError("GOOGLE_API_KEY environment variable not set.")
     genai.configure(api_key=GOOGLE_API_KEY)
-    print("Google AI API Key loaded.")
-except KeyError:
-    print("Error: GOOGLE_API_KEY environment variable not set.")
-    print("Please set the GOOGLE_API_KEY environment variable and try again.")
-    exit(1)
+    print("Google AI API Key configured successfully.")
+except ValueError as e:
+    print(f"Configuration Error: {e}", file=sys.stderr)
+    print("Please set the GOOGLE_API_KEY environment variable and try again.", file=sys.stderr)
+    sys.exit(1)
 except Exception as e:
-    print(f"Error configuring Google AI SDK: {e}")
-    exit(1)
+    print(f"Unexpected Error configuring Google AI SDK: {e}", file=sys.stderr)
+    sys.exit(1)
 
-# --- Helper Functions --- 
+# --- Helper Functions ---
 
-def load_data(gc_path: str, ch_path: str) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
-    """Loads the raw scraped data.
+def load_raw_data(gc_path: Path = GC_RAW_PATH,
+                    ch_path: Path = CH_RAW_PATH) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    """Loads the raw scraped data from GCatholic and Catholic Hierarchy.
 
     Args:
-        gc_path: Path to the raw GCatholic CSV.
-        ch_path: Path to the raw Catholic Hierarchy CSV.
+        gc_path: Path to the GCatholic raw CSV.
+        ch_path: Path to the Catholic Hierarchy raw CSV.
 
     Returns:
-        A tuple containing the GCatholic DataFrame and Catholic Hierarchy DataFrame, or None if loading fails.
+        A tuple containing the GCatholic DataFrame and Catholic Hierarchy DataFrame,
+        or (None, None) if loading fails.
     """
-    df_gc, df_ch = None, None
+    log.info(f"Loading raw GCatholic data from: {gc_path}")
     try:
         df_gc = pd.read_csv(gc_path)
-        print(f"Loaded GC Raw: {df_gc.shape}")
+        # AI: Add gc_id based on index
+        df_gc['gc_id'] = df_gc.index
+        # AI: Save back to CSV immediately to persist the ID
+        df_gc.to_csv(gc_path, index=False, encoding='utf-8')
+        log.info(f"Loaded and updated GCatholic data with gc_id ({df_gc.shape}). Saved back to {gc_path}")
     except FileNotFoundError:
-        print(f"Error: GCatholic raw file not found at {gc_path}")
+        log.error(f"GCatholic raw file not found: {gc_path}")
+        return None, None
     except Exception as e:
-        print(f"Error loading GCatholic raw file: {e}")
-        
+        log.error(f"Error loading or saving GCatholic raw data: {e}", exc_info=True)
+        return None, None
+
+    log.info(f"Loading raw Catholic Hierarchy data from: {ch_path}")
     try:
         df_ch = pd.read_csv(ch_path)
-        print(f"Loaded CH Raw: {df_ch.shape}")
+        # AI: Add ch_id based on index
+        df_ch['ch_id'] = df_ch.index
+        # AI: Save back to CSV immediately to persist the ID
+        df_ch.to_csv(ch_path, index=False, encoding='utf-8')
+        log.info(f"Loaded and updated Catholic Hierarchy data with ch_id ({df_ch.shape}). Saved back to {ch_path}")
     except FileNotFoundError:
-        print(f"Error: Catholic Hierarchy raw file not found at {ch_path}")
+        log.error(f"Catholic Hierarchy raw file not found: {ch_path}")
+        return None, None
     except Exception as e:
-        print(f"Error loading Catholic Hierarchy raw file: {e}")
+        log.error(f"Error loading or saving Catholic Hierarchy raw data: {e}", exc_info=True)
+        return None, None
 
     return df_gc, df_ch
 
 def preprocess_gcatholic(df: pd.DataFrame) -> pd.DataFrame:
-    """Performs minimal preprocessing on GCatholic data (e.g., age filtering)."""
+    """Performs minimal preprocessing on GCatholic data.
+
+    Renames columns, converts age to numeric, filters for electors (age < 80),
+    and adds a unique 'gc_id' based on the original index.
+
+    Args:
+        df: The raw GCatholic DataFrame.
+
+    Returns:
+        A preprocessed DataFrame containing only potential electors with
+        relevant columns ('gc_id', 'gc_description', 'gc_age', 'gc_birthdate').
+        Returns an empty DataFrame if input is empty or filtering results in no electors.
+    """
+    if df.empty:
+        print("Warning: Input GCatholic DataFrame is empty.", file=sys.stderr)
+        return pd.DataFrame(columns=['gc_id', 'gc_description', 'gc_age', 'gc_birthdate'])
+
     print("Preprocessing GCatholic data...")
-    # Rename for clarity
-    df = df.rename(columns={'Cardinal Electors(135)': 'gc_description', 'Age': 'gc_age', 'Date ofBirth': 'gc_birthdate'})
-    # Convert age
-    df['gc_age'] = pd.to_numeric(df['gc_age'], errors='coerce')
-    # Filter electors (age < 80)
-    df_filtered = df[df['gc_age'] < 80].copy()
-    print(f"GCatholic Electors (Age < 80): {len(df_filtered)}")
-    # Add a unique identifier based on original index
-    df_filtered['gc_id'] = df_filtered.index
-    return df_filtered[['gc_id', 'gc_description', 'gc_age', 'gc_birthdate']]
+    # Use a copy to avoid SettingWithCopyWarning
+    df_processed = df.copy()
+    # Rename columns robustly, checking if they exist
+    rename_map = {'Cardinal Electors(135)': 'gc_description', 'Age': 'gc_age', 'Date ofBirth': 'gc_birthdate'}
+    df_processed.rename(columns={k: v for k, v in rename_map.items() if k in df_processed.columns}, inplace=True)
+
+    # Convert age if column exists
+    if 'gc_age' in df_processed.columns:
+        df_processed['gc_age'] = pd.to_numeric(df_processed['gc_age'], errors='coerce')
+        # Filter electors (age < 80) - handle potential NaN ages by filling with a value > 80
+        df_filtered = df_processed[df_processed['gc_age'].fillna(999) < 80].copy()
+        print(f"GCatholic Electors (Age < 80): {len(df_filtered)}")
+    else:
+        print("Warning: 'Age' column not found in GCatholic data, cannot filter by age.", file=sys.stderr)
+        df_filtered = df_processed.copy() # Keep all if age cannot be used
+
+    # Select and return final columns, ensuring they exist
+    final_cols = ['gc_id', 'gc_description', 'gc_age', 'gc_birthdate']
+    required_cols = [col for col in final_cols if col in df_filtered.columns]
+    if 'gc_id' not in required_cols or ('gc_description' not in required_cols):
+         print("Error: Missing essential columns ('gc_id', 'gc_description') after GC preprocessing.", file=sys.stderr)
+         # Return empty with schema to prevent downstream errors
+         return pd.DataFrame(columns=final_cols)
+    return df_filtered[required_cols]
+
 
 def preprocess_catholic_hierarchy(df: pd.DataFrame) -> pd.DataFrame:
-    """Performs minimal preprocessing on CH data (e.g., add id)."""
+    """Performs minimal preprocessing on Catholic Hierarchy data.
+
+    Renames columns and adds a unique 'ch_id' based on the original index.
+
+    Args:
+        df: The raw Catholic Hierarchy DataFrame.
+
+    Returns:
+        A preprocessed DataFrame with relevant columns ('ch_id', 'ch_name',
+        'ch_age', 'ch_birthdate', 'ch_elevated_date', 'ch_title').
+        Returns an empty DataFrame if input is empty.
+    """
+    if df.empty:
+        print("Warning: Input Catholic Hierarchy DataFrame is empty.", file=sys.stderr)
+        return pd.DataFrame(columns=['ch_id', 'ch_name', 'ch_age', 'ch_birthdate', 'ch_elevated_date', 'ch_title'])
+
     print("Preprocessing Catholic Hierarchy data...")
-    # Rename for clarity
-    df = df.rename(columns={'Name': 'ch_name', 'Age': 'ch_age', 'Birthdate': 'ch_birthdate', 'Elevated': 'ch_elevated_date', 'Current Title': 'ch_title'})
-    # Add a unique identifier based on original index
-    df['ch_id'] = df.index
-    return df[['ch_id', 'ch_name', 'ch_age', 'ch_birthdate', 'ch_elevated_date', 'ch_title']]
+    df_processed = df.copy()
+    # Rename columns robustly
+    rename_map = {'Name': 'ch_name', 'Age': 'ch_age', 'Birthdate': 'ch_birthdate', 'Elevated': 'ch_elevated_date', 'Current Title': 'ch_title'}
+    df_processed.rename(columns={k: v for k, v in rename_map.items() if k in df_processed.columns}, inplace=True)
 
-def generate_matching_prompt(gc_list: list[dict], ch_list: list[dict]) -> str:
-    """Creates the prompt for the Gemini LLM to match names."""
-    
-    # AI: Correctly construct the multi-line prompt string
-    prompt_lines = [
-        """
-    You are an expert data analyst specializing in Catholic Church hierarchy. Your task is to match individuals between two lists of cardinals based on their names and potentially other provided details (like age or birthdate if available and consistent).
+    # Select and return final columns, ensuring they exist
+    final_cols = ['ch_id', 'ch_name', 'ch_age', 'ch_birthdate', 'ch_elevated_date', 'ch_title']
+    required_cols = [col for col in final_cols if col in df_processed.columns]
+    if 'ch_id' not in required_cols or 'ch_name' not in required_cols:
+        print("Error: Missing essential columns ('ch_id', 'ch_name') after CH preprocessing.", file=sys.stderr)
+        # Return empty with schema
+        return pd.DataFrame(columns=final_cols)
+    return df_processed[required_cols]
 
-    List 1 (GCatholic) contains descriptions like: 'LastName, FirstName, Suffix.(Age)...Title...'
-    List 2 (Catholic Hierarchy) contains names like: 'FirstName [MiddleName] CardinalLastName [Suffix]'
 
-    Please compare the two lists below and identify pairs of individuals who are likely the same person. Consider variations in name format, middle names/initials, titles (like C.SS.R., O.F.M.), and potential minor discrepancies in age or birthdate.
+def format_list_for_prompt(data_list: List[Dict[str, Any]], prefix: str) -> List[str]:
+    """Formats a list of dictionaries into strings suitable for the LLM prompt.
 
-    Provide your matches as a JSON list of dictionaries, where each dictionary represents a matched pair and has the keys 'gc_id' and 'ch_id' corresponding to the IDs provided in the input lists.
+    Dynamically includes available keys from the preprocessed data.
 
-    Example Output Format: [{'gc_id': 10, 'ch_id': 5}, {'gc_id': 25, 'ch_id': 112}]
+    Args:
+        data_list: List of dictionaries (rows from preprocessed DataFrame).
+        prefix: 'gc' or 'ch', used to determine ID and primary name/description field.
 
-    If you are uncertain about a match, do not include it.
+    Returns:
+        A list of strings, each representing an item for the prompt.
+    """
+    formatted_lines = []
+    id_key = f"{prefix}_id"
+    primary_field = f"{prefix}_description" if prefix == "gc" else f"{prefix}_name"
 
-    --- List 1 (GCatholic) ---
-        """
-    ]
-    
-    # Add GCatholic items
-    for item in gc_list:
-        prompt_lines.append(f"gc_id: {item['gc_id']}, description: {item['gc_description']}, age: {item.get('gc_age', 'N/A')}, birthdate: {item.get('gc_birthdate', 'N/A')}")
-    
-    prompt_lines.append("\n--- List 2 (Catholic Hierarchy) ---")
-    
-    # Add Catholic Hierarchy items
-    for item in ch_list:
-        prompt_lines.append(f"ch_id: {item['ch_id']}, name: {item['ch_name']}, age: {item.get('ch_age', 'N/A')}, birthdate: {item.get('ch_birthdate', 'N/A')}, title: {item.get('ch_title', 'N/A')}")
-        
-    prompt_lines.append("\n--- Matched Pairs (JSON List) ---")
-    # Add a placeholder for the LLM to start generating JSON
-    prompt_lines.append("[") 
-    
-    # Join all lines into the final prompt string
-    prompt = "\n".join(prompt_lines)
-    
+    for item in data_list:
+        # Ensure required ID and primary field are present
+        if id_key not in item or primary_field not in item:
+            print(f"Warning: Skipping item due to missing required field ({id_key} or {primary_field}): {item}", file=sys.stderr)
+            continue
+
+        line = f"{id_key}: {item[id_key]}, {primary_field.split('_')[1]}: {item[primary_field]}"
+        # Add other available fields dynamically
+        other_fields = [
+            f"{k.split('_')[1]}: {v}" for k, v in item.items()
+            if k != id_key and k != primary_field and pd.notna(v) # Exclude NAs
+        ]
+        if other_fields:
+            line += ", " + ", ".join(other_fields)
+        formatted_lines.append(line)
+    return formatted_lines
+
+def generate_matching_prompt(gc_list: List[Dict[str, Any]], ch_list: List[Dict[str, Any]]) -> str:
+    """Creates the prompt for the Gemini LLM to match names.
+
+    Args:
+        gc_list: Preprocessed GCatholic data as a list of dictionaries.
+        ch_list: Preprocessed Catholic Hierarchy data as a list of dictionaries.
+
+    Returns:
+        The complete prompt string for the LLM.
+    """
+    print("Generating LLM prompt...")
+    prompt_header = """
+You are an expert data analyst specializing in Catholic Church hierarchy. Your task is to match individuals between two lists of cardinals based on their names and potentially other provided details (like age or birthdate if available and consistent).
+
+List 1 (GCatholic) contains descriptions like: 'LastName, FirstName, Suffix.(Age)...Title...'
+List 2 (Catholic Hierarchy) contains names like: 'FirstName [MiddleName] CardinalLastName [Suffix]'
+
+Please compare the two lists below and identify pairs of individuals who are likely the same person. Consider variations in name format, middle names/initials, titles (like C.SS.R., O.F.M.), and potential minor discrepancies in age or birthdate.
+
+Provide your matches **only** as a valid JSON list of dictionaries, where each dictionary represents a matched pair and has the keys 'gc_id' and 'ch_id' corresponding to the IDs provided in the input lists. Do not include any text before or after the JSON list. Ensure the JSON is perfectly formatted.
+
+Example Output Format:
+[{"gc_id": 10, "ch_id": 5}, {"gc_id": 25, "ch_id": 112}]
+
+If you are uncertain about a match, do not include it. Only include high-confidence matches.
+
+--- List 1 (GCatholic) ---
+"""
+    gc_prompt_lines = format_list_for_prompt(gc_list, "gc")
+    ch_prompt_lines = format_list_for_prompt(ch_list, "ch")
+
+    prompt = (
+        prompt_header +
+        "\n".join(gc_prompt_lines) +
+        "\n\n--- List 2 (Catholic Hierarchy) ---\n" +
+        "\n".join(ch_prompt_lines) +
+        "\n\n--- Matched Pairs (JSON List Only) ---\n[" # Prime the LLM for JSON list output
+    )
+    print(f"Prompt generated. Length: {len(prompt)} characters.")
     return prompt
 
-def get_llm_matches(prompt: str, model_name: str = "gemini-2.5-flash-preview-04-17") -> list[dict]:
-    """Sends the prompt to the Gemini model and parses the JSON response."""
-    print(f"Sending prompt to Gemini model ({model_name})... Length: {len(prompt)} chars")
+def call_gemini_api(prompt: str, model_name: str = GEMINI_MODEL_NAME) -> Optional[str]:
+    """Sends the prompt to the Gemini model and returns the text response.
+
+    Handles potential API errors and provides limited response info on failure.
+
+    Args:
+        prompt: The prompt string to send to the LLM.
+        model_name: The name of the Gemini model to use.
+
+    Returns:
+        The text content of the LLM response, or None if an error occurs.
+    """
+    print(f"Sending prompt to Gemini model ({model_name})...")
     try:
         model = genai.GenerativeModel(model_name)
-        response = model.generate_content(prompt)
-        
-        # Clean the response: remove markdown backticks and 'json' identifier
-        cleaned_response_text = response.text.strip().replace('```json', '').replace('```', '').strip()
-        print(f"LLM Raw Response Snippet: {cleaned_response_text[:200]}...") # Print snippet
+        # AI: Adjusting generation config for potentially better JSON output
+        generation_config = genai.types.GenerationConfig(
+            # candidate_count=1, # Default is 1
+            # stop_sequences=['}'], # Could try stopping if it adds extra text
+            # max_output_tokens=8192, # Model default usually sufficient
+            # temperature=0.1, # Lower temp for more deterministic JSON
+            response_mime_type="application/json" # Request JSON directly if model supports
+        )
+        # Note: response_mime_type might not be supported by all models/versions
+        # If it causes errors, remove it and rely on prompt engineering.
+        response = model.generate_content(prompt, generation_config=generation_config)
 
-        # Parse the JSON response
-        matches = json.loads(cleaned_response_text)
-        if isinstance(matches, list) and all(isinstance(item, dict) and 'gc_id' in item and 'ch_id' in item for item in matches):
-            print(f"Successfully parsed {len(matches)} matches from LLM response.")
-            return matches
-        else:
-            print("Error: LLM response was not in the expected JSON format.")
-            print(f"Full Response: {cleaned_response_text}")
-            return []
-            
-    except json.JSONDecodeError as e:
-        print(f"Error decoding JSON from LLM response: {e}")
-        print(f"Full Response: {cleaned_response_text}")
-        return []
+        # Check for safety ratings or blocked content *before* accessing .text
+        if response.prompt_feedback.block_reason:
+            print(f"Warning: Prompt was blocked. Reason: {response.prompt_feedback.block_reason}", file=sys.stderr)
+            return None
+        if not response.candidates:
+             print("Warning: No candidates returned by the API.", file=sys.stderr)
+             return None
+        if response.candidates[0].finish_reason != 'STOP':
+            print(f"Warning: Generation finished unexpectedly. Reason: {response.candidates[0].finish_reason}", file=sys.stderr)
+            # Still attempt to get text if available
+            if response.candidates[0].content and response.candidates[0].content.parts:
+                 print("Attempting to extract partial text...")
+                 return response.candidates[0].text # Use .text for safer access
+            else:
+                 return None
+
+        print("Received response from Gemini.")
+        # Use .text attribute for safer access to the response string
+        return response.text
+
+    except AttributeError as ae:
+         print(f"Error: Potentially invalid response structure from API: {ae}", file=sys.stderr)
+         # Log the raw response if possible without causing further errors
+         try:
+            print(f"Raw response object type: {type(response)}", file=sys.stderr)
+            # print(f"Raw response content: {response}", file=sys.stderr) # Avoid printing potentially huge objects
+         except Exception as log_e:
+             print(f"Could not log raw response details: {log_e}", file=sys.stderr)
+         return None
     except Exception as e:
-        print(f"Error interacting with Gemini API: {e}")
-        # Fallback: Check if parts exist (for safety/content filtering issues)
-        try:
-             print(f"Response parts: {response.parts}")
-        except Exception:
-             pass
+        print(f"Error interacting with Gemini API: {e}", file=sys.stderr)
+        # Attempt to log more details if available in the exception
+        if hasattr(e, 'response'):
+            print(f"API Error Response: {e.response}", file=sys.stderr)
+        return None
+
+
+def parse_llm_response(response_text: Optional[str]) -> List[Dict[str, int]]:
+    """Parses the JSON string from the LLM response.
+
+    Args:
+        response_text: The text content returned by the Gemini API call.
+
+    Returns:
+        A list of matched dictionaries (e.g., [{'gc_id': 10, 'ch_id': 5}]),
+        or an empty list if parsing fails or input is None.
+    """
+    if not response_text:
+        print("Cannot parse LLM response: Input text is None or empty.", file=sys.stderr)
         return []
 
-# --- Main Execution --- 
-if __name__ == "__main__":
+    print(f"Parsing LLM Response Snippet: {response_text[:200].strip()}...")
+    cleaned_text = response_text.strip()
+
+    # Attempt to find JSON list within potential markdown/text
+    json_start = cleaned_text.find('[')
+    json_end = cleaned_text.rfind(']') + 1
+
+    if json_start != -1 and json_end != 0:
+        json_str = cleaned_text[json_start:json_end]
+        try:
+            matches = json.loads(json_str)
+            # Validate structure
+            if isinstance(matches, list) and all(isinstance(item, dict) and 'gc_id' in item and 'ch_id' in item for item in matches):
+                print(f"Successfully parsed {len(matches)} matches from LLM response.")
+                # Additional check for correct types (integers)
+                valid_matches = []
+                for item in matches:
+                    try:
+                        valid_matches.append({'gc_id': int(item['gc_id']), 'ch_id': int(item['ch_id'])})
+                    except (ValueError, TypeError):
+                         print(f"Warning: Skipping match with non-integer IDs: {item}", file=sys.stderr)
+                return valid_matches
+            else:
+                print("Error: Parsed JSON from LLM response was not in the expected format (list of dicts with 'gc_id', 'ch_id').", file=sys.stderr)
+                print(f"Parsed JSON structure: {type(matches)}", file=sys.stderr)
+                # print(f"Problematic JSON String: {json_str}", file=sys.stderr) # Debugging
+                return []
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON from LLM response: {e}", file=sys.stderr)
+            print(f"Attempted to parse: {json_str}", file=sys.stderr) # Log the substring tried
+            return []
+    else:
+        print("Error: Could not find valid JSON list structure '[]' in LLM response.", file=sys.stderr)
+        print(f"Full Response Text: {cleaned_text}", file=sys.stderr)
+        return []
+
+
+def save_matches(matches: List[Dict[str, int]], output_path: Path) -> bool:
+    """Saves the list of matched dictionaries to a JSON file.
+
+    Args:
+        matches: The list of matched dictionaries.
+        output_path: The Path object for the output JSON file.
+
+    Returns:
+        True if saving was successful, False otherwise.
+    """
+    print(f"Saving {len(matches)} matches to {output_path}...")
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(matches, f, indent=4)
+        print("Matches saved successfully.")
+        return True
+    except IOError as e:
+        print(f"Error saving matches to {output_path}: {e}", file=sys.stderr)
+        return False
+    except TypeError as e:
+        print(f"Error serializing matches to JSON: {e}", file=sys.stderr)
+        return False
+
+
+def main():
+    """Main function to orchestrate the LLM matching process."""
     print("--- Starting LLM Name Matching Script ---")
-    
-    df_gc_raw, df_ch_raw = load_data(GC_RAW_PATH, CH_RAW_PATH)
-    
+
+    # --- Load Data ---
+    df_gc_raw, df_ch_raw = load_raw_data(GC_RAW_PATH, CH_RAW_PATH)
     if df_gc_raw is None or df_ch_raw is None:
-        print("Error: Failed to load one or both raw datasets. Exiting.")
-        exit(1)
-        
-    # Preprocess
+        print("Error: Failed to load one or both raw datasets. Exiting.", file=sys.stderr)
+        sys.exit(1)
+
+    # --- Preprocess Data ---
     df_gc_processed = preprocess_gcatholic(df_gc_raw)
     df_ch_processed = preprocess_catholic_hierarchy(df_ch_raw)
-    
-    # Convert DataFrames to lists of dictionaries for the prompt
+
+    if df_gc_processed.empty or df_ch_processed.empty:
+         print("Error: Preprocessing resulted in empty data for GC or CH. Cannot proceed.", file=sys.stderr)
+         sys.exit(1)
+
+    # --- Prepare for Prompt ---
     gc_list_for_prompt = df_gc_processed.to_dict('records')
     ch_list_for_prompt = df_ch_processed.to_dict('records')
-    
-    # Generate Prompt
+
+    # --- Generate Prompt ---
     prompt = generate_matching_prompt(gc_list_for_prompt, ch_list_for_prompt)
-    # print("\n--- Generated Prompt ---")
-    # print(prompt[:1000] + "...") # Print beginning of prompt for verification
-    # print("-" * 20)
-    
-    # Get Matches from LLM
-    # Adding retry logic in case of transient API issues
-    max_retries = 3
+    # print(f"Debug: Prompt start:\n{prompt[:500]}\n...\nPrompt end:\n{prompt[-500:]}") # Optional debug
+
+    # --- Get Matches from LLM (with Retries) ---
     matches = []
-    for attempt in range(max_retries):
-        matches = get_llm_matches(prompt)
-        if matches: # If we got a non-empty list of matches, break
-             break
-        elif attempt < max_retries - 1: # Don't sleep on last attempt
-             print(f"Retrying LLM call (attempt {attempt + 2}/{max_retries})...")
-             time.sleep(5 * (attempt + 1)) # Exponential backoff
-             
+    for attempt in range(MAX_LLM_RETRIES):
+        print(f"\nAttempting LLM call ({attempt + 1}/{MAX_LLM_RETRIES})...")
+        response_text = call_gemini_api(prompt)
+        if response_text:
+            matches = parse_llm_response(response_text)
+            if matches:  # If we got a non-empty list of valid matches, break
+                break
+            else:
+                 print("LLM response received but parsing failed or yielded no valid matches.")
+        else:
+            print("LLM call failed or returned no text.")
+
+        if attempt < MAX_LLM_RETRIES - 1:
+            sleep_time = RETRY_SLEEP_BASE_SECONDS * (attempt + 1)
+            print(f"Retrying in {sleep_time} seconds...")
+            time.sleep(sleep_time)
+        else:
+            print("Maximum LLM retries reached.")
+
+    # --- Save Matches ---
     if not matches:
-        print("Failed to get matches from LLM after multiple attempts.")
+        print("\nFailed to get valid matches from LLM after multiple attempts. No output file generated.", file=sys.stderr)
         # Optionally save the prompt for debugging
-        # with open("failed_prompt.txt", "w") as f:
-        #     f.write(prompt)
-        # print("Saved failed prompt to failed_prompt.txt")
-        exit(1)
+        # try:
+        #     failed_prompt_path = DATA_DIR / "failed_llm_prompt.txt"
+        #     with open(failed_prompt_path, "w", encoding='utf-8') as f:
+        #         f.write(prompt)
+        #     print(f"Saved failed prompt to {failed_prompt_path}")
+        # except Exception as e:
+        #      print(f"Could not save failed prompt: {e}", file=sys.stderr)
+        sys.exit(1) # Exit if no matches were obtained
 
-    # Save Matches
+    if save_matches(matches, MATCH_OUTPUT_PATH):
+        print(f"\n--- LLM Name Matching Script Finished Successfully ({len(matches)} matches found) ---")
+    else:
+        print("\n--- LLM Name Matching Script Finished with Errors (Save failed) ---", file=sys.stderr)
+        sys.exit(1)
+
+# --- Script Execution Guard ---
+if __name__ == "__main__":
+    # Configure logging
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(levelname)s - %(message)s')
+
+    # --- Google AI API Key Check ---
     try:
-        with open(MATCH_OUTPUT_PATH, 'w') as f:
-            json.dump(matches, f, indent=4)
-        print(f"Successfully saved {len(matches)} matched pairs to {MATCH_OUTPUT_PATH}")
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+        log.info("Google AI API Key configured successfully.")
+    except KeyError:
+        log.error("Error: GOOGLE_API_KEY environment variable not set.")
+        sys.exit(1)
     except Exception as e:
-        print(f"Error saving matched pairs: {e}")
+        log.error(f"Error configuring Google AI: {e}", exc_info=True)
+        sys.exit(1)
 
-    print("--- LLM Name Matching Script Finished ---")
+    log.info("--- Starting LLM Name Matching Script ---")
+
+    # Check if matches file already exists
+    if LLM_MATCHES_PATH.exists():
+        log.warning(f"Matches file already exists: {LLM_MATCHES_PATH}")
+        log.info("Ensuring raw data files have IDs...")
+        # Still load (and save back) raw data to ensure IDs are present
+        df_gc_raw, df_ch_raw = load_raw_data(GC_RAW_PATH, CH_RAW_PATH)
+        if df_gc_raw is None or df_ch_raw is None:
+            log.error("Failed to load or update raw data files even though matches exist. Exiting.")
+            sys.exit(1)
+        log.info("Raw data files checked/updated. Exiting script as matches already exist.")
+        sys.exit(0)
+    else:
+        # --- Load and Preprocess Data (Only if matches file doesn't exist) ---
+        log.info("Matches file not found. Proceeding with LLM matching workflow.")
+        log.info("Loading and preprocessing raw data...")
+        df_gc_raw, df_ch_raw = load_raw_data(GC_RAW_PATH, CH_RAW_PATH)
+        if df_gc_raw is None or df_ch_raw is None:
+            log.error("Failed to load initial raw data. Exiting.")
+            sys.exit(1)
+
+        log.info("Preprocessing GCatholic data...")
+        df_gc_processed = preprocess_gcatholic(df_gc_raw)
+        if df_gc_processed is None:
+            log.error("Failed to preprocess GCatholic data. Exiting.")
+            sys.exit(1)
+        log.info(f"GCatholic Electors (Age < 80): {len(df_gc_processed)}")
+
+        log.info("Preprocessing Catholic Hierarchy data...")
+        df_ch_processed = preprocess_catholic_hierarchy(df_ch_raw)
+        if df_ch_processed is None:
+            log.error("Failed to preprocess Catholic Hierarchy data. Exiting.")
+            sys.exit(1)
+
+        # --- Generate Prompt ---
+        log.info("Generating LLM prompt...")
+        prompt = generate_matching_prompt(df_gc_processed.to_dict('records'), df_ch_processed.to_dict('records'))
+        if not prompt:
+            log.error("Failed to generate LLM prompt. Exiting.")
+            sys.exit(1)
+        log.info(f"Prompt generated. Length: {len(prompt)} characters.")
+
+        # --- Get Matches from LLM ---
+        matches = []
+        for attempt in range(MAX_LLM_RETRIES):
+            print(f"\nAttempting LLM call ({attempt + 1}/{MAX_LLM_RETRIES})...")
+            response_text = call_gemini_api(prompt)
+            if response_text:
+                matches = parse_llm_response(response_text)
+                if matches:  # If we got a non-empty list of valid matches, break
+                    break
+                else:
+                     print("LLM response received but parsing failed or yielded no valid matches.")
+            else:
+                print("LLM call failed or returned no text.")
+
+            if attempt < MAX_LLM_RETRIES - 1:
+                sleep_time = RETRY_SLEEP_BASE_SECONDS * (attempt + 1)
+                print(f"Retrying in {sleep_time} seconds...")
+                time.sleep(sleep_time)
+            else:
+                print("Maximum LLM retries reached.")
+
+        # --- Save Matches ---
+        if not matches:
+            print("\nFailed to get valid matches from LLM after multiple attempts. No output file generated.", file=sys.stderr)
+            sys.exit(1)
+
+        if save_matches(matches, LLM_MATCHES_PATH):
+            print(f"\n--- LLM Name Matching Script Finished Successfully ({len(matches)} matches found) ---")
+        else:
+            print("\n--- LLM Name Matching Script Finished with Errors (Save failed) ---", file=sys.stderr)
+            sys.exit(1)
