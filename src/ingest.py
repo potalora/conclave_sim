@@ -441,6 +441,13 @@ def _standardize_final_names(df: pd.DataFrame) -> pd.DataFrame:
         df['name_clean'] = None # Add empty column if source is missing
     return df
 
+def _add_ideology_score(df: pd.DataFrame) -> pd.DataFrame:
+    """Adds a placeholder 'ideology_score' column with random floats between -1 and 1."""
+    log.info("Adding placeholder 'ideology_score' column.")
+    num_electors = len(df)
+    df['ideology_score'] = np.random.uniform(-1.0, 1.0, num_electors)
+    log.debug(f"Sample ideology scores:\n{df[['gc_id', 'name_clean', 'ideology_score']].head()}")
+    return df
 
 def _save_merged_data(df: pd.DataFrame, output_path: Path) -> bool:
     """Saves the final merged and processed DataFrame to CSV."""
@@ -448,7 +455,7 @@ def _save_merged_data(df: pd.DataFrame, output_path: Path) -> bool:
         log.error("Cannot save merged data: DataFrame is empty.")
         return False
     try:
-        log.info(f"Saving final merged data ({df.shape}) to {output_path}...")
+        log.info(f"Saving final merged data ({df.shape}) to {output_path}")
         output_path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(output_path, index=False, encoding='utf-8')
         log.info("Final merged data saved successfully.")
@@ -552,7 +559,17 @@ def process_and_merge_data(gc_raw_path: Path = GCATHOLIC_RAW_PATH,
     # 4. Final Standardization (e.g., cleaning names)
     df_final = _standardize_final_names(df_merged)
 
-    # 5. Save the result
+    # 5. Add placeholder ideology score
+    df_final = _add_ideology_score(df_final)
+
+    # 6. Rename ID column (AI: Added Step)
+    if 'gc_id' in df_final.columns:
+        log.info("Renaming 'gc_id' to 'elector_id' for simulation compatibility.")
+        df_final = df_final.rename(columns={'gc_id': 'elector_id'})
+    else:
+        log.warning("'gc_id' column not found for renaming to 'elector_id'.")
+
+    # 7. Save the result
     success = _save_merged_data(df_final, output_path)
     if success:
         log.info("--- Data Processing and Merging Completed Successfully ---")

@@ -8,7 +8,8 @@ import numpy as np
 import traceback
 
 # AI: Assuming src is in PYTHONPATH or running with python -m src
-from .ingest import load_elector_data
+# Remove ingest import, load directly
+# from .ingest import load_elector_data
 from .simulate import run_monte_carlo_simulation
 
 def main():
@@ -31,6 +32,13 @@ def main():
         default=0.5,
         help="Beta weight for ideology influence in the transition model (default: 0.5)."
     )
+    # AI: Add argument for stickiness factor
+    parser.add_argument(
+        "-s", "--stickiness-factor",
+        type=float,
+        default=0.2,
+        help="Stickiness factor for vote transition model (0-1, default: 0.2)."
+    )
     # AI: Add verbosity flag
     parser.add_argument(
         "-v", "--verbose",
@@ -45,18 +53,31 @@ def main():
     print(f" - Elector Data: {args.elector_file}")
     print(f" - Simulations: {args.num_simulations}")
     print(f" - Beta Weight: {args.beta_weight}")
+    print(f" - Stickiness Factor: {args.stickiness_factor}") # AI: Print new param
 
     # --- 1. Load Data ---
     try:
-        elector_df = load_elector_data(args.elector_file)
-        print(f"Loaded {len(elector_df)} electors.")
+        # AI: Load data directly using pandas
+        print(f"Loading elector data from: {args.elector_file}")
+        if not os.path.exists(args.elector_file):
+            raise FileNotFoundError(f"Elector file not found: {args.elector_file}")
+        elector_df = pd.read_csv(args.elector_file)
+        if elector_df.empty:
+            raise ValueError("Elector file is empty.")
+        # Basic check for required column (others checked in simulation func)
+        if 'elector_id' not in elector_df.columns:
+             raise ValueError("Elector file must contain an 'elector_id' column.")
+
+        print(f"Loaded {len(elector_df)} electors successfully.")
     except (FileNotFoundError, ValueError, pd.errors.EmptyDataError, Exception) as e:
         print(f"Error loading elector data: {e}", file=sys.stderr)
         sys.exit(1)
 
     # --- 2. Define Model Parameters ---
     model_parameters = {
-        'beta_weight': args.beta_weight
+        'beta_weight': args.beta_weight,
+        # AI: Add stickiness factor to parameters
+        'stickiness_factor': args.stickiness_factor
         # Add other parameters here if the model evolves
     }
 
