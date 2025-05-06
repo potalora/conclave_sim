@@ -3,7 +3,21 @@ from typing import Optional, Dict, List
 import os
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin # AI: Added import for urljoin
+from urllib.parse import urljoin
+import re # Import regex module
+import datetime # Import datetime
+import numpy as np # Import numpy for merging/consolidation
+import json
+import logging
+import subprocess
+import sys
+
+# Constants
+DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
+GCATHOLIC_OUTPUT_PATH = os.path.join(DATA_DIR, 'scraped_gcatholic_raw.csv')
+CH_OUTPUT_PATH = os.path.join(DATA_DIR, 'scraped_ch_raw.csv')
+LLM_MATCHES_PATH = os.path.join(DATA_DIR, 'llm_matched_pairs.json')
+MERGED_ELECTORS_PATH = os.path.join(DATA_DIR, 'merged_electors.csv')
 
 def load_elector_data(file_path: str, schema: Optional[Dict[str, type]] = None) -> pd.DataFrame:
     """Loads elector roster data from a specified CSV file.
@@ -55,110 +69,131 @@ def load_elector_data(file_path: str, schema: Optional[Dict[str, type]] = None) 
     return elector_df
 
 
-# AI: Added function to scrape GCatholic
-def scrape_gcatholic_roster(url: str = "https://gcatholic.org/hierarchy/cardinals-alive-age.htm") -> Optional[List[Dict[str, str]]]:
-    """Scrapes the 'Living Cardinals' table from GCatholic.org.
-
-    Fetches the page content, parses the HTML, and attempts to find the main
-    cardinals table.
+def scrape_gcatholic_roster(url: str = "https://gcatholic.org/hierarchy/cardinals-alive-age.htm") -> Optional[pd.DataFrame]:
+    """Scrapes the roster of living cardinals from GCatholic.org.
 
     Args:
-        url: The URL of the GCatholic living cardinals page.
+        url: The URL of the GCatholic cardinals page.
 
     Returns:
-        A list of dictionaries, where each dictionary represents a row
-        (a cardinal) with column headers as keys, or None if scraping fails.
-
+        A Pandas DataFrame containing the scraped cardinal data, or None if scraping fails.
+        The DataFrame includes headers derived from the table and extracted data rows.
     Raises:
-        requests.exceptions.RequestException: If the web request fails.
+        requests.exceptions.RequestException: If the HTTP request fails.
     """
     print(f"Attempting to scrape GCatholic roster from: {url}")
     try:
-        response = requests.get(url, timeout=30) # Add timeout
-        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()  # Raise an exception for bad status codes
     except requests.exceptions.RequestException as e:
         print(f"Error fetching URL {url}: {e}")
-        raise # Re-raise the exception after logging
-
-    soup = BeautifulSoup(response.content, 'lxml') # Use lxml parser
-
-    # Find the table (based on product plan: class='table-striped')
-    # Note: Website inspection might be needed if this class name is inaccurate
-    # or if there are multiple tables with this class.
-    # AI: Updated selector based on raw HTML inspection
-    table = soup.find("table", class_="tb")
-
-    if not table:
-        # AI: Updated error message to reflect the new selector
-        print(f"Error: Could not find the expected table (class='tb') on {url}")
         return None
 
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    # AI: --- Updated Table Finding Logic --- 
+    target_table = None
+    all_tables = soup.find_all('table')
+    print(f"Found {len(all_tables)} tables on the page. Checking headers...")
+    
+    # Define expected header substrings (flexible matching)
+    expected_header_parts = ['Cardinal', 'Age', 'Birth'] 
+
+    for table in all_tables:
+        first_row = table.find('tr')
+        if not first_row:
+            continue
+        
+        header_cells = first_row.find_all(['th', 'td']) # Check both th and td
+        if not header_cells:
+            continue
+            
+        actual_headers = [cell.get_text(strip=True) for cell in header_cells]
+        
+        # Check if the actual headers contain the expected parts
+        # This check needs to be robust - ensure all parts are found
+        header_match_count = 0
+        for expected_part in expected_header_parts:
+            if any(expected_part in actual_header for actual_header in actual_headers):
+                header_match_count += 1
+                
+        if header_match_count == len(expected_header_parts):
+            target_table = table
+            print(f"Found target table with matching headers: {actual_headers}")
+            break # Stop after finding the first matching table
+        # else: 
+            # Optional: print headers of non-matching tables for debugging
+            # print(f"  Skipping table with headers: {actual_headers}")
+
+    # Replace the old table finding logic with the result
+    table = target_table 
+    # --- End Updated Table Finding Logic ---
+    
+    if not table:
+        print("Error: Could not find the target table on the page.")
+        return None
     print("Successfully found the cardinals table.")
 
-    # AI: Implement table data extraction logic
     cardinals_data: List[Dict[str, str]] = []
     headers = []
 
-    # Extract headers (usually in <thead> or the first <tr>)
-    header_row = table.find('thead')
-    if not header_row:
-        header_row = table.find('tr') # Fallback to first row if no thead
-
+    # Extract headers from the first row (assuming it uses <th>)
+    header_row = table.find('tr')
     if header_row:
-        # Extract text from th or td elements within the header row
-        headers = [th.get_text(strip=True) for th in header_row.find_all(['th', 'td'])]
-        print(f"Found headers: {headers}")
+        th_cells = header_row.find_all('th')
+        if th_cells:
+            headers = [th.get_text(strip=True) for th in th_cells]
+            print(f"Found headers: {headers}")
+        else:
+             # Fallback: if no <th>, try using <td> in the first row as headers
+             td_cells = header_row.find_all('td')
+             if td_cells:
+                 headers = [td.get_text(strip=True) for td in td_cells]
+                 print(f"Found headers (using td fallback): {headers}")
+             else:
+                print("Warning: Could not find header cells (th or td) in the first row.")
+                # Decide if processing should continue without headers or stop
+                # For now, let's stop if headers are crucial
+                return None 
     else:
-        print("Warning: Could not find table headers.")
-        # Optionally define default headers if structure is known but lacks th/thead
+        print("Warning: Could not find the header row (tr) in the table.")
+        return None
 
-    # Extract data rows (usually in <tbody> or subsequent <tr>)
-    body = table.find('tbody')
-    if not body:
-        data_rows = table.find_all('tr')[1:] # Skip header row if no tbody
-    else:
-        data_rows = body.find_all('tr')
-
+    # Extract data rows (skip the header row)
+    data_rows = table.find_all('tr')[1:] 
     print(f"Found {len(data_rows)} data rows.")
-
     for row in data_rows:
         cells = row.find_all('td')
-        if headers:
-            # Create dict only if headers were found and cell count matches
-            if len(cells) == len(headers):
-                row_data = {headers[i]: cells[i].get_text(strip=True) for i in range(len(cells))}
-                cardinals_data.append(row_data)
-            else:
-                print(f"Warning: Row skipped due to mismatch between cell count ({len(cells)}) and header count ({len(headers)}). Row content: {[c.get_text(strip=True) for c in cells]}")
-        else:
-            # If no headers, store as list of strings (less ideal)
-            row_data_list = [cell.get_text(strip=True) for cell in cells]
-            # Representing as dict with generic keys if no headers
-            cardinals_data.append({f"col_{i}": data for i, data in enumerate(row_data_list)})
+        if len(cells) == len(headers):
+            row_data = {headers[i]: cells[i].get_text(strip=True) for i in range(len(cells))}
+            cardinals_data.append(row_data)
+        # else: 
+            # Optional: Log or handle rows with mismatched cell counts
+            # print(f"Skipping row with {len(cells)} cells (expected {len(headers)}): {[c.get_text(strip=True) for c in cells]}")
 
-    # AI: Removed placeholder print statement
-    # print("Table data extraction not yet implemented.")
-
-    if not cardinals_data:
-        print("Warning: Data extraction resulted in an empty list.")
-
-    return cardinals_data
+    print(f"Successfully scraped {len(cardinals_data)} records.")
+    if cardinals_data:
+        print("First 2 records:")
+        print(cardinals_data[:2])
+        return pd.DataFrame(cardinals_data) # AI: Return DataFrame
+    else:
+        print("Warning: No data records were successfully scraped.")
+        return None
 
 
-# AI: Added function to scrape Catholic Hierarchy
-# AI: Updated default URL again to the scardc3 page as requested by user
-def scrape_catholic_hierarchy_roster(url: str = "https://www.catholic-hierarchy.org/bishop/scardc3.html") -> Optional[List[Dict[str, str]]]:
-    """Scrapes the list from Catholic-Hierarchy.org.
+def scrape_catholic_hierarchy_roster(url: str = "https://www.catholic-hierarchy.org/bishop/scardc3.html") -> Optional[pd.DataFrame]:
+    """Scrapes the roster of living cardinal electors from Catholic-Hierarchy.org.
 
     Args:
-        url: The URL of the Catholic Hierarchy page (default updated).
-    
+        url: The URL of the Catholic Hierarchy cardinals page (scardc3.html recommended).
+
     Returns:
-        A list of dictionaries representing cardinals, or None if scraping fails.
+        A Pandas DataFrame containing the scraped elector cardinal data, or None if scraping fails.
+        Includes dynamically identified headers and specific extraction for 'Name' and 'ProfileLink'.
 
     Raises:
-        requests.exceptions.RequestException: If the web request fails.
-    """ # AI: Ensure docstring is properly closed
+        requests.exceptions.RequestException: If the HTTP request fails.
+    """
     print(f"\nAttempting to scrape Catholic Hierarchy roster from: {url}")
     try:
         response = requests.get(url, timeout=10)
@@ -275,59 +310,239 @@ def scrape_catholic_hierarchy_roster(url: str = "https://www.catholic-hierarchy.
     if not cardinals_data:
         print("Warning: Data extraction resulted in an empty list (check table selector and structure).")
 
-    return cardinals_data
+    return pd.DataFrame(cardinals_data) # AI: Return DataFrame
 
 
-# # AI: Test execution block
+def process_scraped_data(
+    scraped_gc_path: str = GCATHOLIC_OUTPUT_PATH,
+    scraped_ch_path: str = CH_OUTPUT_PATH,
+    matches_path: str = LLM_MATCHES_PATH,
+    output_path: str = MERGED_ELECTORS_PATH
+) -> Optional[pd.DataFrame]:
+    """Processes scraped data using LLM matches, merges, and saves the result.
+
+    Args:
+        scraped_gc_path: Path to the raw scraped GCatholic CSV file.
+        scraped_ch_path: Path to the raw scraped Catholic Hierarchy CSV file.
+        matches_path: Path to the JSON file containing LLM-matched gc_id/ch_id pairs.
+        output_path: Path to save the final merged elector CSV file.
+
+    Returns:
+        The merged DataFrame, or None if processing fails.
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Starting data processing using LLM matches...")
+
+    # 1. Load Raw Data
+    try:
+        df_gc_raw = pd.read_csv(scraped_gc_path)
+        logger.info(f"Loaded raw GCatholic data: {df_gc_raw.shape}")
+    except FileNotFoundError:
+        logger.error(f"Raw GCatholic file not found: {scraped_gc_path}")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading raw GCatholic file: {e}")
+        return None
+
+    try:
+        df_ch_raw = pd.read_csv(scraped_ch_path)
+        logger.info(f"Loaded raw Catholic Hierarchy data: {df_ch_raw.shape}")
+    except FileNotFoundError:
+        logger.error(f"Raw Catholic Hierarchy file not found: {scraped_ch_path}")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading raw Catholic Hierarchy file: {e}")
+        return None
+
+    # 2. Load LLM Matches
+    try:
+        with open(matches_path, 'r') as f:
+            matches = json.load(f)
+        df_matches = pd.DataFrame(matches)
+        if not all(col in df_matches.columns for col in ['gc_id', 'ch_id']):
+             raise ValueError("Matches JSON missing 'gc_id' or 'ch_id'")
+        logger.info(f"Loaded {len(df_matches)} LLM matches from {matches_path}")
+    except FileNotFoundError:
+        logger.error(f"LLM matches file not found: {matches_path}. Run src/match_names.py first.")
+        return None
+    except json.JSONDecodeError:
+        logger.error(f"Error decoding JSON from {matches_path}.")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading LLM matches: {e}")
+        return None
+
+    # 3. Preprocess Raw Dataframes (Minimal)
+    # Add IDs based on original index (needed for matching)
+    df_gc_raw['gc_id'] = df_gc_raw.index
+    df_ch_raw['ch_id'] = df_ch_raw.index
+
+    # Rename columns for clarity before merge
+    df_gc_raw = df_gc_raw.rename(columns={'Cardinal Electors(135)': 'gc_description', 'Age': 'gc_age', 'Date ofBirth': 'gc_birthdate'})
+    df_ch_raw = df_ch_raw.rename(columns={'Name': 'ch_name', 'Age': 'ch_age', 'Birthdate': 'ch_birthdate', 'Elevated': 'ch_elevated_date', 'Current Title': 'ch_title'})
+
+    # Apply age filter to GCatholic (Age < 80)
+    df_gc_raw['gc_age'] = pd.to_numeric(df_gc_raw['gc_age'], errors='coerce')
+    df_gc_filtered = df_gc_raw[df_gc_raw['gc_age'] < 80].copy()
+    logger.info(f"Filtered GCatholic electors (Age < 80): {len(df_gc_filtered)}")
+
+    # Select necessary columns before merge
+    gc_cols = ['gc_id', 'gc_description', 'gc_age', 'gc_birthdate']
+    ch_cols = ['ch_id', 'ch_name', 'ch_age', 'ch_birthdate', 'ch_elevated_date', 'ch_title']
+    df_gc_to_merge = df_gc_filtered[gc_cols]
+    df_ch_to_merge = df_ch_raw[ch_cols]
+
+    # 4. Merge using LLM Matches
+    logger.info(f"Merging GC ({len(df_gc_to_merge)}) and CH ({len(df_ch_to_merge)}) using {len(df_matches)} matches...")
+
+    # Merge GC with matches
+    df_merged = pd.merge(df_matches, df_gc_to_merge, on='gc_id', how='inner')
+    logger.info(f"Shape after merging matches with GC: {df_merged.shape}")
+
+    # Merge the result with CH
+    df_merged = pd.merge(df_merged, df_ch_to_merge, on='ch_id', how='inner')
+    logger.info(f"Shape after merging with CH: {df_merged.shape}")
+
+    if len(df_merged) == 0:
+        logger.warning("Merge resulted in an empty DataFrame. Check matches and preprocessing.")
+        return None
+    elif len(df_merged) < len(df_matches):
+         logger.warning(f"Merge resulted in {len(df_merged)} rows, but expected {len(df_matches)}. Some matches might not have corresponding raw data after filtering.")
+
+    # 5. Final Processing & Column Selection
+    # Consolidate information - prioritize CH data where available, use GC as fallback
+    # Example: Use CH name and title, GC age/birthdate if CH is missing/different format
+    # For now, let's just select key columns from both for inspection
+
+    # Standardize Name from CH (likely cleaner now)
+    # Basic split, assuming 'FirstName MiddleName Cardinal LastName'
+    def extract_std_name(ch_name):
+        if not isinstance(ch_name, str):
+            return None
+        parts = ch_name.replace('Cardinal', '').strip().split()
+        if len(parts) >= 2:
+            return f"{parts[-1]}, {parts[0]}" # LastName, FirstName
+        elif len(parts) == 1:
+            return parts[0] # Fallback
+        return None
+
+    df_merged['name_standardized'] = df_merged['ch_name'].apply(extract_std_name)
+    missing_names = df_merged['name_standardized'].isnull().sum()
+    if missing_names > 0:
+        logger.warning(f"{missing_names} rows failed standardized name extraction from CH name.")
+
+    # Select final columns
+    final_cols = [
+        'name_standardized', # Primary identifier
+        'gc_age',             # Use GC age (already filtered)
+        'gc_birthdate',
+        'ch_elevated_date',
+        'ch_title',
+        'ch_name',            # Keep original CH name for reference
+        'gc_description',     # Keep original GC desc for reference
+        'gc_id',              # Keep IDs for traceability
+        'ch_id'
+    ]
+    # Filter for columns that actually exist after merge
+    final_cols_present = [col for col in final_cols if col in df_merged.columns]
+    df_final = df_merged[final_cols_present].copy()
+
+    # Rename for consistency
+    df_final = df_final.rename(columns={
+        'name_standardized': 'Name',
+        'gc_age': 'Age',
+        'gc_birthdate': 'Birthdate_GC',
+        'ch_elevated_date': 'Elevated',
+        'ch_title': 'Title'
+    })
+
+    logger.info(f"Final merged dataset shape: {df_final.shape}")
+
+    # 6. Save Processed Data
+    try:
+        df_final.to_csv(output_path, index=False)
+        logger.info(f"Successfully saved merged elector data to {output_path}")
+    except Exception as e:
+        logger.error(f"Error saving merged data: {e}")
+        return None
+
+    return df_final
+
+
+# --- Main Execution Logic (Example) ---
+# This part is typically called from __main__.py or another orchestrator script
 if __name__ == "__main__":
-    sample_file = os.path.join(os.path.dirname(__file__), '..', 'data', 'electors_sample.csv')
-    print(f"--- Testing load_elector_data with {sample_file} ---")
-    try:
-        df = load_elector_data(sample_file)
-        print("--- Loaded DataFrame ---:")
-        print(df)
-        print("------------------------")
-    except FileNotFoundError as e:
-        print(e)
-    except ValueError as e:
-        print(e)
-    except pd.errors.EmptyDataError as e:
-        print(e)
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-    print("--- Test complete --- ")
+    # Configure logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    # AI: Add test for scraper
-    print("\n--- Testing scrape_gcatholic_roster --- ")
-    try:
-        gcatholic_data = scrape_gcatholic_roster()
-        if gcatholic_data is not None:
-            print(f"Successfully scraped {len(gcatholic_data)} records.")
-            if gcatholic_data:
-                print("First 2 records:")
-                print(gcatholic_data[:2]) # Print first 2 records
-        else:
-            print("Scraping failed or table not found.")
-    except requests.exceptions.RequestException as e:
-        print(f"Scraping failed due to network/HTTP error: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred during scraping: {e}")
+    logger = logging.getLogger(__name__)
+    logger.info("Running ingest script directly...")
 
-    # AI: Add test for Catholic Hierarchy scraper
-    print("\n--- Testing scrape_catholic_hierarchy_roster --- ")
-    try:
-        ch_data = scrape_catholic_hierarchy_roster()
-        if ch_data is not None:
-            print(f"Successfully scraped {len(ch_data)} records.")
-            if ch_data:
-                print("First 2 records (potential):")
-                print(ch_data[:2])
-        else:
-            # AI: Updated message
-            print("Scraping failed or table not found/identified.")
-    except requests.exceptions.RequestException as e:
-        print(f"Scraping failed due to network/HTTP error: {e}")
-    except Exception as e:
-        print(f"An unexpected error occurred during scraping: {e}")
+    # 1. Scrape GCatholic data
+    gc_data = scrape_gcatholic_roster()
+    if gc_data is not None: # AI: Correct boolean check for DataFrame
+        # df_gc = pd.DataFrame(gc_data) # No longer needed, function returns DF
+        gc_raw_output_path = os.path.join(DATA_DIR, 'scraped_gcatholic_raw.csv')
+        try:
+            gc_data.to_csv(gc_raw_output_path, index=False) # Use gc_data directly
+            logger.info(f"GCatholic raw data saved to {gc_raw_output_path}")
+        except Exception as e:
+            logger.error(f"Failed to save GCatholic raw data: {e}")
+    else:
+        logger.warning("Failed to scrape GCatholic data.")
 
-    print("--- Test complete ---")
+    # 2. Scrape Catholic Hierarchy data
+    ch_data = scrape_catholic_hierarchy_roster()
+    if ch_data is not None: # AI: Correct boolean check for DataFrame
+        # df_ch = pd.DataFrame(ch_data) # No longer needed, function returns DF
+        ch_raw_output_path = os.path.join(DATA_DIR, 'scraped_ch_raw.csv')
+        try:
+            ch_data.to_csv(ch_raw_output_path, index=False) # Use ch_data directly
+            logger.info(f"Catholic Hierarchy raw data saved to {ch_raw_output_path}")
+        except Exception as e:
+            logger.error(f"Failed to save Catholic Hierarchy raw data: {e}")
+    else:
+        logger.warning("Failed to scrape Catholic Hierarchy data.")
+
+    # 3. Run LLM Matching (only if matches don't exist)
+    match_file_path = os.path.join(DATA_DIR, 'llm_matched_pairs.json')
+    if not os.path.exists(match_file_path):
+        logger.info("LLM match file not found. Running LLM matching script (match_names.py)... Ensure GOOGLE_API_KEY is set.")
+        match_script_path = os.path.join(os.path.dirname(__file__), 'match_names.py')
+        try:
+            result = subprocess.run(['python', match_script_path], capture_output=True, text=True, check=True, cwd=os.path.dirname(__file__))
+            logger.info(f"match_names.py stdout:\n{result.stdout}")
+            if result.stderr:
+                logger.warning(f"match_names.py stderr:\n{result.stderr}")
+            logger.info("LLM matching script completed.")
+        except FileNotFoundError:
+            logger.error(f"Error: The script '{match_script_path}' was not found.")
+            # Decide how to handle this: exit, raise, etc.
+            sys.exit(1)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"LLM matching script failed with exit code {e.returncode}.")
+            logger.error(f"Stdout:\n{e.stdout}")
+            logger.error(f"Stderr:\n{e.stderr}")
+            # Decide how to handle this: exit, raise, etc.
+            sys.exit(1) # Exit if matching fails
+        except Exception as e:
+             logger.error(f"An unexpected error occurred while running match_names.py: {e}")
+             sys.exit(1)
+    else:
+        logger.info(f"Found existing LLM match file at {match_file_path}. Skipping LLM matching script.")
+
+    # 4. Process data using matches
+    logger.info("Processing data using LLM matches...")
+    merged_df = process_scraped_data()
+
+    if merged_df is not None:
+        logger.info("Data processing successful.")
+        # Display first 5 rows of the merged data
+        # print("\n--- Merged Elector Data (First 5 Rows) ---")
+        # print(merged_df.head().to_markdown(index=False))
+        # print("\n")
+        # print(merged_df.info())
+    else:
+        logger.error("Data processing failed.")
+
+    logger.info("Ingest script finished.")
