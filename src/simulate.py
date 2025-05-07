@@ -310,10 +310,10 @@ if __name__ == '__main__':
         help="Number of simulation iterations to run."
     )
     parser.add_argument(
-        "--input-data",
+        "--electors-file",
         type=Path,
-        default=Path(__file__).resolve().parent.parent / "data" / "merged_electors.csv",
-        help="Path to the merged elector data CSV file."
+        default=Path(__file__).resolve().parent.parent / "merged_electors.csv",
+        help="Path to the CSV file containing elector data.",
     )
     parser.add_argument(
         "--output-results",
@@ -402,13 +402,13 @@ if __name__ == '__main__':
         log.debug("Verbose logging enabled for main process.") 
 
     try:
-        log.info(f"Loading elector data from: {args.input_data}")
-        if not args.input_data.exists():
-            raise FileNotFoundError(f"Input file not found: {args.input_data}")
-        electors_df = pd.read_csv(args.input_data)
+        log.info(f"Loading elector data from: {args.electors_file}")
+        if not args.electors_file.exists():
+            raise FileNotFoundError(f"Input file not found: {args.electors_file}")
+        electors_df = pd.read_csv(args.electors_file)
 
         if 'elector_id' not in electors_df.columns:
-            raise ValueError(f"'elector_id' column not found in {args.input_data}.")
+            raise ValueError(f"'elector_id' column not found in {args.electors_file}.")
 
         electors_df['elector_id'] = electors_df['elector_id'].astype(str)
         electors_df.set_index('elector_id', inplace=True)

@@ -555,7 +555,7 @@ def main():
     llm_match_path = data_dir / 'llm_matched_pairs.json'
     conclavoscope_json_path = data_dir / 'conclavoscope_parsed.json'
     conclavoscope_llm_match_path = data_dir / 'conclavoscope_llm_matches.json'
-    merged_output_path = data_dir / 'merged_electors.csv'
+    merged_output_path = base_dir / 'merged_electors.csv'  # Updated path
     cache_dir = data_dir / 'cache'
 
     # Setup logging (redundant if _process_and_merge_data does it, but safe)
