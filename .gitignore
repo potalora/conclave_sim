@@ -126,9 +126,9 @@ data/llm_matched_pairs_conclavoscope.json
 
 # Generated simulation outputs and cache
 data/plots/
-data/cache/
-simulation_results.csv
-simulation_stats.json
+#data/cache/
+#simulation_results.csv
+#simulation_stats.json
 
 # Node.js dependencies
 node_modules/
