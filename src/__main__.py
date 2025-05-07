@@ -16,7 +16,6 @@ log = logging.getLogger(__name__)
 # Remove ingest import, load directly
 # from .ingest import load_elector_data
 from .simulate import run_monte_carlo_simulation
-from .ideology import calculate_papacy_score, calculate_llm_score # AI: Import ideology functions
 
 def main():
     """Main entry point for running the simulation from the command line."""
@@ -73,29 +72,36 @@ def main():
         # Basic check for required column (others checked in simulation func)
         if 'elector_id' not in elector_df.columns:
              raise ValueError("Elector file must contain an 'elector_id' column.")
+        # AI: Add check for the conclavoscope score column
+        if 'conclavoscope_score' not in elector_df.columns:
+            raise ValueError("Elector file must contain a 'conclavoscope_score' column. Run ingest script first.")
 
         print(f"Loaded {len(elector_df)} electors successfully.")
     except (FileNotFoundError, ValueError, pd.errors.EmptyDataError, Exception) as e:
         print(f"Error loading elector data: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # --- 1b. Calculate Ideology Proxies --- (AI: Added Step)
+    # --- 1b. Assign Ideology Score --- (AI: Modified Step)
     try:
-        # Calculate papacy score (more proxies will be added here)
-        elector_df = calculate_papacy_score(elector_df)
-        # We will later calculate a composite score and potentially replace
-        # the placeholder 'ideology_score' column before simulation.
-        # For now, the simulation uses the placeholder score from the CSV.
+        # AI: Assign ideology_score from the pre-calculated conclavoscope_score
+        log.info("Assigning 'ideology_score' from 'conclavoscope_score' column.")
+        initial_nan_count = elector_df['conclavoscope_score'].isna().sum()
+        if initial_nan_count > 0:
+            log.warning(f"Found {initial_nan_count} missing values in 'conclavoscope_score'. Filling with 0.0.")
+            elector_df['ideology_score'] = elector_df['conclavoscope_score'].fillna(0.0)
+        else:
+            elector_df['ideology_score'] = elector_df['conclavoscope_score']
 
-        # AI: Add LLM Score Calculation
-        log.info("Calculating LLM-based ideology scores (requires GOOGLE_API_KEY)...")
-        elector_df = calculate_llm_score(elector_df)
+        # Ensure the final score is within the expected -1 to 1 range (optional, but good practice)
+        elector_df['ideology_score'] = np.clip(elector_df['ideology_score'], -1.0, 1.0)
+        log.info("Successfully assigned 'ideology_score'.")
 
     except KeyError as e:
-        print(f"Error calculating ideology scores: Missing required column - {e}", file=sys.stderr)
+        # This check is now less likely due to the earlier check, but kept for safety
+        print(f"Error assigning ideology score: Missing required column - {e}. Ensure 'conclavoscope_score' exists.", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"An unexpected error occurred during ideology calculation: {e}", file=sys.stderr)
+        print(f"An unexpected error occurred during ideology score assignment: {e}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 

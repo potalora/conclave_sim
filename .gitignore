@@ -90,7 +90,6 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
 .venv
 env/
 venv/
@@ -118,3 +117,9 @@ dmypy.json
 
 # macOS
 .DS_Store
+
+# Environment variables
+.env
+
+# Generated data files (if intended to be ephemeral)
+data/llm_matched_pairs_conclavoscope.json

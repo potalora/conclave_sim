@@ -2,7 +2,7 @@
 
 ### Background
 
-* **Papal Vacancy Triggered:** On May 4, 2025, Pope Francis passed away, initiating the need for a conclave of 135 cardinal electors to choose his successor.
+* **Papal Vacancy Triggered:** On May 4, 2025, Pope Francis passed away, initiating the need for a conclave of 135 cardinal electors to choose his successor.
 * **Project Goal:** Build a robust, transparent Monte Carlo simulation to forecast likely conclave outcomes and timelines under real-world rules and scenarios.
 
 ### 1. Vision & Objectives
@@ -51,7 +51,7 @@
 * **Code Velocity:** Time to create/refactor core modules (<30 min per feature).
 * **Accuracy:** Simulated 2013 conclave win probability within ±5 % of historical estimates.
 * **Adoption:** ≥5 external contributors in first month.
-* **Performance:** 20 000 simulations in <1 min on standard laptop CPU.
+* **Performance:** 20 000 simulations in <1 min on standard laptop CPU.
 
 ### 6. Risks & Mitigations
 
@@ -71,9 +71,8 @@
 
 1. **GCatholic.org** – Maintains a “Living Cardinals” table with ages and birth dates (137 entries, including non-electors) ([GCatholic][1]).
 2. **Catholic-Hierarchy.org** – Structured view of “Cardinal Electors” vs. non-voting cardinals ([Catholic Hierarchy][2]).
-3. **Holy See Press Office (Vatican.va)** – Official bulletins listing confirmed cardinals present at consistories ([Vatican Press][3]).
-4. **Acta Apostolicae Sedis** – Archive of official creation dates in successive volumes ([Vatican][4]).
-5. **Wikipedia – List of current cardinals** – Community-maintained roster (use cautiously, cross-check) ([Wikipedia][5]).
+3. **Wikipedia – List of current cardinals** – Community-maintained roster (use cautiously, cross-check) ([Wikipedia][5]).
+4. **Conclavescore**
 
 ---
 
@@ -118,6 +117,35 @@ Decide on these core fields for each elector:
 
 ---
 
+## 3.1 Transition Model Specification
+
+The `TransitionModel` in `src/model.py` calculates the probability of each elector voting for each potential candidate in a given round. The probability is determined by a combination of ideological similarity and vote stickiness from the previous round.
+
+**Inputs:**
+
+* `elector_data` (pd.DataFrame): Indexed by `elector_id`, must contain the calculated `ideology_score` column.
+* `current_votes` (dict, optional): Maps `elector_id` (voter) to `elector_id` (candidate voted for in the previous round). `None` for the first round.
+
+**Parameters:**
+
+* `beta_weight` (float): Controls the sensitivity to ideological distance. Higher values mean electors strongly prefer ideologically similar candidates.
+* `stickiness_factor` (float, 0 to 1): Controls the tendency to repeat the previous vote. 0 means no stickiness, 1 means maximal stickiness (deterministic if combined with other factors).
+
+**Calculation Steps:**
+
+1. **Ideological Distance:** Calculate the pairwise absolute ideological distance matrix `D`, where `D[i, j] = |ideology_score[i] - ideology_score[j]|`.
+2. **Base Attraction:** Calculate a base attraction matrix `A` based on distance: `A[i, j] = exp(-beta_weight * D[i, j])`. Note that `A[i, i]` (attraction to self) will be `exp(0) = 1`.
+3. **Apply Stickiness (if `current_votes` is provided and `stickiness_factor > 0`):
+    * Initialize `FinalScores = (1 - stickiness_factor) * A`.
+    * For each voter `i` who previously voted for candidate `k`: Boost the score for that specific candidate: `FinalScores[i, k] += stickiness_factor`. *(Note: This simple additive boost assumes the baseline attraction score `A` is normalized or scaled appropriately before combining. The exact interaction might need calibration. An alternative approach is to combine probabilities directly: `P_final = stickiness * P_previous + (1-stickiness) * P_attraction`)*
+4. **No Stickiness (if `current_votes` is `None` or `stickiness_factor == 0`):
+    * `FinalScores = A`.
+5. **Normalization:** Normalize the `FinalScores` matrix row-wise to get probabilities. For each row `i` (voter): `Probability[i, j] = FinalScores[i, j] / sum(FinalScores[i, :])`. Ensure the sum of probabilities for each voter equals 1.
+
+**Handling Missing Scores:** Electors missing an `ideology_score` (due to missing `cs_alignment_score`) should be handled. Options include: (a) excluding them from the transition calculation, (b) imputing their score (e.g., with the mean/median), or (c) assigning a neutral transition probability. Method (b) or (c) is generally preferred to keep the elector count stable.
+
+---
+
 ## 4. Parsing & Cleaning
 
 * **Name normalization**: strip accents (e.g. `unidecode`), consistent casing.
@@ -149,22 +177,48 @@ Decide on these core fields for each elector:
 * **`docs/dataset.md`**: Outline sources, scraping commands, data schema.
 * **`notebooks/dataset_creation.ipynb`**: Demo notebook showing fetch → clean → validate steps.
 
----
+## 8. Ideology Score Calculation
 
-## 8. Timeline & Ownership
+The `ideology_score` for each elector is a primary driver of voting preference in the simulation. It aims to represent their position on a conservative-to-progressive spectrum.
 
-* **Day 1–2:** Source cataloging and schema finalization.
-* **Day 3–5:** Scraper scripts for GCatholic, Catholic-Hierarchy, Vatican press.
-* **Day 6:** Cleaning pipeline and initial export.
-* **Day 7:** QA, tests, documentation completion.
-* **Owner:** \[Name], with review by tech lead on Day 7.
+### 8.1 Primary Data Source
 
-[1]: https://www.gcatholic.org/
-[2]: https://www.catholic-hierarchy.org/
-[3]: https://press.vatican.va/
-[4]: https://www.vatican.va/archive/aas/index.htm
-[5]: https://en.wikipedia.org/wiki/List_of_current_cardinals
-[6]: https://en.wikipedia.org/wiki/Cardinals_created_by_Francis
+* **Conclavoscope Alignment Score (`cs_alignment_score`):** The main input for the `ideology_score` will be the `cs_alignment_score` obtained from the merged dataset (`data/merged_electors.csv`). This score reflects an assessment of the cardinal's alignment based on Conclavoscope's methodology.
+
+### 8.2 Calculation
+
+1. **Handle Missing Values:** Address missing `cs_alignment_score` values in the input data. Common strategies include:
+    * Imputation: Replace missing scores with the mean or median `cs_alignment_score` of all electors who have a score.
+    * Default Value: Assign a neutral score (e.g., 0 if the final scale is -1 to +1).
+2. **Normalization:** Normalize the (potentially imputed) `cs_alignment_score` to a consistent range, typically **[-1.0, +1.0]**, where -1.0 represents the most conservative and +1.0 represents the most progressive end of the scale relative to the dataset.
+    * Min-Max Scaling is a suitable method:
+        `norm_score = -1 + 2 * (score - min_score) / (max_score - min_score)`
+3. **Assignment:** The resulting normalized score is assigned to the `ideology_score` column in the `elector_data` DataFrame used by the simulation models.
+
+(Previous complex methods involving LLMs, external website scraping, and multi-factor weighting (Sections 8.2-8.3 in earlier versions) are deprecated in favor of this more direct approach based on available Conclavoscope data.)
+
+### 8.3 Validation & Calibration (Simplified)
+
+#### 8.3.1 Sanity Checks & Outlier Review
+
+* Assert –1 ≤ `ideology_score` ≤ +1 after calculation.
+* Review the distribution of the final `ideology_score` (e.g., histogram) to ensure it appears reasonable.
+* Examine electors with extreme scores (close to -1 or +1) to ensure they align with qualitative expectations, if possible.
+
+#### 8.3.2 Calibration Considerations
+
+* While direct external benchmarking might be difficult without the previously planned data sources, the `beta_weight` parameter in the `TransitionModel` can be calibrated during simulation runs (e.g., by comparing simulation outcomes against historical conclaves or expert predictions) to tune the influence of the `ideology_score`.
+* If simulation results consistently deviate from expectations, revisiting the normalization method or the handling of missing values for the `ideology_score` may be necessary.
+
+#### 8.3.3 Integration into Simulation Model
+
+* The final `ideology_score` is a key input for the `TransitionModel` in `src/model.py`, influencing voting probabilities between cardinals based on ideological distance.
+
+## 9. Simulation Engine (`src/simulate.py`)
+
+```python
+# Simulation Engine
+```
 
 ---
 
@@ -174,7 +228,7 @@ Decide on these core fields for each elector:
 
 **Key Tasks:**
 
-1. **Elector Roster Ingestion (`src/ingest.py`):**
+1. **Elector Roster Ingestion (`src/ingest.py`):
     * Define a stable CSV schema for elector attributes (ID, Name, Region, DOB, Ordination Date, Ideology Score).
     * Implement `load_elector_data` function.
     * Implement web scraping (`requests`, `beautifulsoup4`) for:
@@ -183,7 +237,7 @@ Decide on these core fields for each elector:
     * Focus: Create a consolidated dataset (`data/electors_current_consolidated.csv`) by merging scraped data with manual inputs (like ideology scores). Prioritize completeness and accuracy for *current* electors.
     * Defer historical elector lists (e.g., for 2013, 2005 conclaves) to later phase.
 
-2. **Preference Model (`src/model.py`):**
+2. **Preference Model (`src/model.py`):
     * Implement `PreferenceModel` class.
 
 **Backtesting:** Once the simulation for current electors is validated, create datasets for historical conclaves (e.g., 2005, 2013) and run the simulation to compare outcomes against reality.
@@ -191,3 +245,10 @@ Decide on these core fields for each elector:
 **Geopolitical Factors:** Incorporate more nuanced regional dynamics beyond simple affinity.
 
 **Papal Influence:** Model the potential impact of the previous Pope's appointments.
+
+[1]: https://www.gcatholic.org/
+[2]: https://www.catholic-hierarchy.org/
+[3]: https://press.vatican.va/
+[4]: https://www.vatican.va/archive/aas/index.htm
+[5]: https://en.wikipedia.org/wiki/List_of_current_cardinals
+[6]: https://en.wikipedia.org/wiki/Cardinals_created_by_Francis
