@@ -1,0 +1,135 @@
+elector_id,gc_id,ch_id,cs_id,name_clean,name_clean_ascii,dob,date_cardinal,country_final,region,is_papabile,ideology_score,cs_total_score
+0,0,19,66,mykolacardinalbychok,mykolacardinalbychok,1980-02-13,2024-12-07,Australia,Oceania,False,0.29411764705882354,36
+1,1,73,85,giorgiocardinalmarengo,giorgiocardinalmarengo,1974-06-07,2022-08-27,Mongolia,Asia_Other,False,0.24705882352941178,32
+2,2,2,96,américo manuelcardinalalves aguiar,americo manuelcardinalalves aguiar,1973-12-12,2023-09-30,Portugal,Europe,False,0.21176470588235294,29
+3,3,60,60,george jacobcardinalkoovakad,george jacobcardinalkoovakad,1973-08-11,2024-12-07,India,Asia_Other,False,0.3176470588235294,38
+4,4,71,64,rolandascardinalmakrickas,rolandascardinalmakrickas,1972-01-31,2024-12-07,Lithuania,Europe,False,0.3058823529411765,37
+5,5,66,40,frankcardinalleo,frankcardinalleo,1971-06-30,2024-12-07,Canada,North_America_Canada,False,0.3764705882352941,43
+6,6,103,84,baldassarecardinalreina,baldassarecardinalreina,1970-11-26,2024-12-07,Italy,Europe,False,0.24705882352941178,32
+7,7,18,49,françois-xaviercardinalbustillo,francois-xaviercardinalbustillo,1968-11-23,2023-09-30,France,Europe,False,0.35294117647058826,41
+8,8,38,39,virgiliocardinaldo carmo da silva,virgiliocardinaldo carmo da silva,1967-11-27,2022-08-27,East Timor,Oceania,False,0.38823529411764707,44
+9,9,29,87,paulo cezarcardinalcosta,paulo cezarcardinalcosta,1967-07-20,2022-08-27,Brazil,Latin_America,False,0.24705882352941178,32
+10,10,87,72,dieudonnécardinalnzapalainga,dieudonnecardinalnzapalainga,1967-03-14,2016-11-19,Central African Republic,Africa,False,0.27058823529411763,34
+11,11,104,127,robertocardinalrepole,robertocardinalrepole,1967-01-29,2024-12-07,Italy,Europe,False,0.09411764705882353,19
+12,12,79,123,josé tolentinocardinalcalaça de mendonça,jose tolentinocardinalcalaca de mendonca,1965-12-15,2019-10-05,Portugal,Europe,True,0.11764705882352941,21
+13,13,49,102,mauro mariacardinalgambetti,mauro mariacardinalgambetti,1965-10-27,2020-11-28,Italy,Europe,False,0.2,28
+14,14,27,94,josécardinalcobo cano,josecardinalcobo cano,1965-09-20,2023-09-30,Spain,Europe,False,0.2235294117647059,30
+15,15,96,16,pierbattistacardinalpizzaballa,pierbattistacardinalpizzaballa,1965-04-21,2023-09-30,Israel,Asia_Middle_East,True,0.5764705882352941,60
+16,16,7,98,fabiocardinalbaggio,fabiocardinalbaggio,1965-01-15,2024-12-07,Italy,Europe,False,0.21176470588235294,29
+17,17,67,126,augusto paolocardinallojudice,augusto paolocardinallojudice,1964-07-01,2020-11-28,Italy,Europe,False,0.09411764705882353,19
+18,18,113,68,grzegorz wojciechcardinalryś,grzegorz wojciechcardinalrys,1964-02-09,2023-09-30,Poland,Europe,False,0.2823529411764706,35
+19,19,81,79,stephen ameyu martincardinalmulla,stephen ameyu martincardinalmulla,1964-01-10,2023-09-30,South Sudan,Africa,False,0.25882352941176473,33
+20,20,62,95,konradcardinalkrajewski,konradcardinalkrajewski,1963-11-25,2018-06-28,Poland,Europe,False,0.2235294117647059,30
+21,21,77,59,dominique josephcardinalmathieu,dominique josephcardinalmathieu,1963-06-13,2024-12-07,Iran,Asia_Middle_East,False,0.3176470588235294,38
+22,22,88,46,peter eberecardinalokpaleke,peter eberecardinalokpaleke,1963-03-01,2022-08-27,Nigeria,Africa,False,0.36470588235294116,42
+23,23,9,97,domenicocardinalbattaglia,domenicocardinalbattaglia,1963-01-20,2024-12-07,Italy,Europe,False,0.21176470588235294,29
+24,24,43,132,victor manuelcardinalfernández,victor manuelcardinalfernandez,1962-07-18,2023-09-30,Argentina,Latin_America,False,0.011764705882352941,12
+25,25,130,117,jean-paulcardinalvesco,jean-paulcardinalvesco,1962-03-10,2024-12-07,Algeria,Africa,False,0.1411764705882353,23
+26,26,110,109,luis josécardinalrueda aparicio,luis josecardinalrueda aparicio,1962-03-03,2023-09-30,Colombia,Latin_America,False,0.17647058823529413,26
+27,27,70,88,soane patita painicardinalmafi,soane patita painicardinalmafi,1961-12-19,2015-02-14,Tonga,Oceania,False,0.24705882352941178,32
+28,28,98,99,anthonycardinalpoola,anthonycardinalpoola,1961-11-15,2022-08-27,India,Asia_Other,False,0.2,28
+29,29,10,53,ignacecardinalbessi dogbo,ignacecardinalbessi dogbo,1961-08-17,2024-12-07,Ivory Coast,Africa,False,0.32941176470588235,39
+30,30,119,116,jaimecardinalspengler,jaimecardinalspengler,1960-09-06,2024-12-07,Brazil,Latin_America,False,0.1411764705882353,23
+31,31,44,115,ángelcardinalfernández artime,angelcardinalfernandez artime,1960-08-21,2023-09-30,Spain,Europe,False,0.15294117647058825,24
+32,32,111,28,protasecardinalrugambwa,protasecardinalrugambwa,1960-05-31,2023-09-30,Tanzania,Africa,False,0.47058823529411764,51
+33,33,3,37,fridolincardinalambongo besungu,fridolincardinalambongo besungu,1960-01-24,2019-10-05,Democratic Republic of the Congo,Africa,True,0.38823529411764707,44
+34,34,107,89,sérgiocardinalda rocha,sergiocardinalda rocha,1959-10-21,2016-11-19,Brazil,Latin_America,False,0.24705882352941178,32
+35,35,25,104,stephencardinalchow sau-yan,stephencardinalchow sau-yan,1959-08-07,2023-09-30,Hong Kong,Asia_Other,False,0.2,28
+36,36,121,19,daniel fernandocardinalsturla berhouet,daniel fernandocardinalsturla berhouet,1959-07-04,2015-02-14,Uruguay,Latin_America,True,0.5529411764705883,58
+37,37,125,26,baselios cleemis (isaac)cardinalthottunkal,baselios cleemis (isaac)cardinalthottunkal,1959-06-15,2012-11-24,India,Asia_Other,False,0.47058823529411764,51
+38,38,33,110,pablo virgilio siongcocardinaldavid,pablo virgilio siongcocardinaldavid,1959-03-02,2024-12-07,Philippines,Asia_Other,False,0.17647058823529413,26
+39,39,5,65,jean-marc noëlcardinalaveline,jean-marc noelcardinalaveline,1958-12-26,2022-08-27,France,Europe,True,0.29411764705882354,36
+40,40,65,70,chiblycardinallanglois,chiblycardinallanglois,1958-11-29,2014-02-22,Haiti,Latin_America,False,0.27058823529411763,34
+41,41,57,69,antoinecardinalkambanda,antoinecardinalkambanda,1958-11-10,2020-11-28,Rwanda,Africa,False,0.27058823529411763,34
+42,42,58,106,tarcisio isaocardinalkikuchi,tarcisio isaocardinalkikuchi,1958-11-01,2024-12-07,Japan,Asia_Other,False,0.18823529411764706,27
+43,43,109,93,ángel sixtocardinalrossi,angel sixtocardinalrossi,1958-08-11,2023-09-30,Argentina,Latin_America,False,0.23529411764705882,31
+44,44,56,133,jean-claudecardinalhollerich,jean-claudecardinalhollerich,1958-08-09,2019-10-05,Luxembourg,Europe,False,0.0,11
+45,45,64,42,gérald cypriencardinallacroix,gerald cypriencardinallacroix,1957-07-27,2014-02-22,Canada,North_America_Canada,False,0.3764705882352941,43
+46,46,51,51,williamcardinalgoh seng chye,williamcardinalgoh seng chye,1957-06-25,2022-08-27,Singapore,Asia_Other,False,0.35294117647058826,41
+47,47,123,125,luis antonio gokimcardinaltagle,luis antonio gokimcardinaltagle,1957-06-21,2012-11-24,Philippines,Asia_Other,True,0.10588235294117647,20
+48,48,24,33,fernando nataliocardinalchomalí garib,fernando nataliocardinalchomali garib,1957-03-10,2024-12-07,Chile,Latin_America,False,0.4117647058823529,46
+49,49,52,114,mariocardinalgrech,mariocardinalgrech,1957-02-20,2020-11-28,Malta,Europe,False,0.15294117647058825,24
+50,50,105,105,johncardinalribat,johncardinalribat,1957-02-09,2016-11-19,Papua New Guinea,Oceania,False,0.18823529411764706,27
+51,51,16,80,stephencardinalbrislin,stephencardinalbrislin,1956-09-24,2023-09-30,South Africa,Africa,True,0.25882352941176473,33
+52,52,83,108,ladislavcardinalnemet,ladislavcardinalnemet,1956-09-07,2024-12-07,Serbia,Europe,False,0.17647058823529413,26
+53,53,131,9,rainer mariacardinalwoelki,rainer mariacardinalwoelki,1956-08-18,2012-02-18,Germany,Europe,False,0.6705882352941176,68
+54,54,134,119,matteo mariacardinalzuppi,matteo mariacardinalzuppi,1955-10-11,2019-10-05,Italy,Europe,True,0.1411764705882353,23
+55,55,20,61,luis gerardocardinalcabrera herrera,luis gerardocardinalcabrera herrera,1955-10-11,2024-12-07,Ecuador,Latin_America,False,0.3176470588235294,38
+56,56,54,35,claudiocardinalgugerotti,claudiocardinalgugerotti,1955-10-07,2023-09-30,Italy,Europe,True,0.4,45
+57,57,99,78,robert franciscardinalprevost,robert franciscardinalprevost,1955-09-14,2023-09-30,United States,North_America_USA,False,0.25882352941176473,33
+58,58,92,43,pietrocardinalparolin,pietrocardinalparolin,1955-01-17,2014-02-22,Italy,Europe,True,0.3764705882352941,43
+59,59,127,7,désirécardinaltsarahazana,desirecardinaltsarahazana,1954-06-13,2018-06-28,Madagascar,Africa,False,0.7647058823529411,76
+60,60,78,134,robert waltercardinalmcelroy,robert waltercardinalmcelroy,1954-02-05,2022-08-27,United States,North_America_USA,False,0.0,11
+61,61,34,31,angelocardinalde donatis,angelocardinalde donatis,1954-01-04,2018-06-28,Italy,Europe,False,0.4235294117647059,47
+62,62,76,128,reinhardcardinalmarx,reinhardcardinalmarx,1953-09-21,2010-11-20,Germany,Europe,False,0.058823529411764705,16
+63,63,40,5,willem jacobuscardinaleijk,willem jacobuscardinaleijk,1953-06-22,2012-02-18,Netherlands,Europe,True,0.788235294117647,78
+64,64,45,47,filipe neri antónio sebastião do rosáriocardinalferrão,filipe neri antonio sebastiao do rosariocardinalferrao,1953-01-20,2022-08-27,India,Asia_Other,False,0.35294117647058826,41
+65,65,41,11,pétercardinalerdő,petercardinalerdo,1952-06-25,2003-10-21,Hungary,Europe,True,0.6352941176470588,65
+66,66,13,74,vicentecardinalbokalic iglic,vicentecardinalbokalic iglic,1952-06-11,2024-12-07,Argentina,Latin_America,False,0.27058823529411763,34
+67,67,68,90,cristóbalcardinallópez romero,cristobalcardinallopez romero,1952-05-19,2019-10-05,Morocco,Africa,False,0.23529411764705882,31
+68,68,126,122,joseph williamcardinaltobin,joseph williamcardinaltobin,1952-05-03,2016-11-19,United States,North_America_USA,False,0.11764705882352941,21
+69,69,0,73,jose lazaro fuertecardinaladvincula jr.,jose lazaro fuertecardinaladvincula jr.,1952-03-30,2020-11-28,Philippines,Asia_Other,False,0.27058823529411763,34
+70,70,72,8,dominique françois josephcardinalmamberti,dominique francois josephcardinalmamberti,1952-03-07,2015-02-14,France,Europe,False,0.7176470588235294,72
+71,71,132,91,lazzarocardinalyou heung-sik,lazzarocardinalyou heung-sik,1951-11-17,2022-08-27,South Korea,Asia_Other,False,0.23529411764705882,31
+72,72,47,103,sebastiancardinalfrancis,sebastiancardinalfrancis,1951-11-11,2023-09-30,Malaysia,Asia_Other,False,0.2,28
+73,73,74,75,adalbertocardinalmartínez flores,adalbertocardinalmartinez flores,1951-07-08,2022-08-27,Paraguay,Latin_America,False,0.25882352941176473,33
+74,74,120,131,leonardo ulrichcardinalsteiner,leonardo ulrichcardinalsteiner,1950-11-06,2022-08-27,Brazil,Latin_America,False,0.011764705882352941,12
+75,75,8,17,philippe xavier christian ignace mariecardinalbarbarin,philippe xavier christian ignace mariecardinalbarbarin,1950-10-17,2003-10-21,France,Europe,False,0.5647058823529412,59
+76,76,22,56,oscarcardinalcantoni,oscarcardinalcantoni,1950-09-01,2022-08-27,Italy,Europe,False,0.32941176470588235,39
+77,77,122,113,ignatiuscardinalsuharyo hardjoatmodjo,ignatiuscardinalsuharyo hardjoatmodjo,1950-07-09,2019-10-05,Indonesia,Asia_Other,False,0.15294117647058825,24
+78,78,124,52,orani joãocardinaltempesta,orani joaocardinaltempesta,1950-06-23,2014-02-22,Brazil,Latin_America,False,0.3411764705882353,40
+79,79,59,45,kurtcardinalkoch,kurtcardinalkoch,1950-03-15,2010-11-20,Switzerland,Europe,True,0.36470588235294116,42
+80,80,108,83,arthurcardinalroche,arthurcardinalroche,1950-03-06,2022-08-27,United Kingdom,Europe,False,0.24705882352941178,32
+81,81,23,130,carlos gustavocardinalcastillo mattasoglio,carlos gustavocardinalcastillo mattasoglio,1950-02-28,2024-12-07,Peru,Latin_America,False,0.011764705882352941,12
+82,82,39,12,timothy michaelcardinaldolan,timothy michaelcardinaldolan,1950-02-06,2012-02-18,United States,North_America_USA,False,0.6235294117647059,64
+83,83,86,44,kazimierzcardinalnycz,kazimierzcardinalnycz,1950-02-01,2010-11-20,Poland,Europe,False,0.36470588235294116,42
+84,84,1,107,carloscardinalaguiar retes,carloscardinalaguiar retes,1950-01-09,2016-11-19,Mexico,Latin_America,False,0.17647058823529413,26
+85,85,48,62,arlindocardinalgomes furtado,arlindocardinalgomes furtado,1949-11-15,2015-02-14,Cape Verde,Africa,False,0.3058823529411765,37
+86,86,55,14,james michaelcardinalharvey,james michaelcardinalharvey,1949-10-20,2012-11-24,United States,North_America_USA,False,0.5882352941176471,61
+87,87,4,22,anderscardinalarborelius,anderscardinalarborelius,1949-09-24,2017-06-28,Sweden,Europe,True,0.5294117647058824,56
+88,88,116,50,odilo pedrocardinalscherer,odilo pedrocardinalscherer,1949-09-21,2007-11-24,Brazil,Latin_America,False,0.35294117647058826,41
+89,89,61,48,francis xavier kriengsakcardinalkovithavanij,francis xavier kriengsakcardinalkovithavanij,1949-06-27,2015-02-14,Thailand,Asia_Other,False,0.35294117647058826,41
+90,90,37,25,daniel nicholascardinaldinardo,daniel nicholascardinaldinardo,1949-05-23,2007-11-24,United States,North_America_USA,False,0.49411764705882355,53
+91,91,14,15,josipcardinalbozanić,josipcardinalbozanic,1949-03-20,2003-10-21,Croatia,Europe,False,0.5764705882352941,60
+92,92,31,129,blase josephcardinalcupich,blase josephcardinalcupich,1949-03-19,2016-11-19,United States,North_America_USA,False,0.011764705882352941,12
+93,93,15,92,leopoldo josécardinalbrenes solórzano,leopoldo josecardinalbrenes solorzano,1949-03-07,2014-02-22,Nicaragua,Latin_America,False,0.23529411764705882,31
+94,94,69,58,thomas aquino manyocardinalmaeda,thomas aquino manyocardinalmaeda,1949-03-03,2018-06-28,Japan,Asia_Other,False,0.32941176470588235,39
+95,95,106,34,josé franciscocardinalrobles ortega,jose franciscocardinalrobles ortega,1949-03-02,2007-11-24,Mexico,Latin_America,False,0.4117647058823529,46
+96,96,12,13,charles maungcardinalbo,charles maungcardinalbo,1948-10-29,2015-02-14,Myanmar,Asia_Other,True,0.5882352941176471,61
+97,97,129,57,peter kodwo appiahcardinalturkson,peter kodwo appiahcardinalturkson,1948-10-11,2003-10-21,Ghana,Africa,True,0.32941176470588235,39
+98,98,94,41,giuseppecardinalpetrocchi,giuseppecardinalpetrocchi,1948-08-19,2018-06-28,Italy,Europe,False,0.3764705882352941,43
+99,99,26,55,manuel josécardinalmacário do nascimento clemente,manuel josecardinalmacario do nascimento clemente,1948-07-16,2015-02-14,Portugal,Europe,False,0.32941176470588235,39
+100,100,118,27,berhaneyesus demerewcardinalsouraphiel,berhaneyesus demerewcardinalsouraphiel,1948-07-14,2015-02-14,Ethiopia,Africa,False,0.47058823529411764,51
+101,101,50,54,juan de la caridadcardinalgarcía rodríguez,juan de la caridadcardinalgarcia rodriguez,1948-07-11,2019-10-05,Cuba,Latin_America,False,0.32941176470588235,39
+102,102,115,1,robertcardinalsarah,robertcardinalsarah,1945-06-15,2010-11-20,Guinea,Africa,True,0.9058823529411765,88
+103,103,17,0,raymond leocardinalburke,raymond leocardinalburke,1948-06-30,2010-11-20,United States,North_America_USA,False,1.0,96
+104,104,36,111,john atcherleycardinaldew,john atcherleycardinaldew,1948-05-05,2015-02-14,New Zealand,Oceania,False,0.16470588235294117,25
+105,105,82,4,gerhard ludwigcardinalmüller,gerhard ludwigcardinalmuller,1947-12-31,2014-02-22,Germany,Europe,True,0.8,79
+106,106,117,118,marcellocardinalsemeraro,marcellocardinalsemeraro,1947-12-22,2020-11-28,Italy,Europe,False,0.1411764705882353,23
+107,107,53,81,wilton danielcardinalgregory,wilton danielcardinalgregory,1947-12-07,2020-11-28,United States,North_America_USA,False,0.25882352941176473,33
+108,108,97,32,mario aureliocardinalpoli,mario aureliocardinalpoli,1947-11-29,2014-02-22,Argentina,Latin_America,False,0.4235294117647059,47
+109,109,93,3,albert malcolm ranjithcardinalpatabendige don,albert malcolm ranjithcardinalpatabendige don,1947-11-15,2010-11-20,Sri Lanka,Asia_Other,True,0.8,79
+110,110,42,76,kevin josephcardinalfarrell,kevin josephcardinalfarrell,1947-09-02,2016-11-19,United States,North_America_USA,False,0.25882352941176473,33
+111,111,102,82,alvaro leonelcardinalramazzini imeri,alvaro leonelcardinalramazzini imeri,1947-07-16,2019-10-05,Guatemala,Latin_America,False,0.25882352941176473,33
+112,112,35,112,jozefcardinalde kesel,jozefcardinalde kesel,1947-06-17,2016-11-19,Belgium,Europe,False,0.16470588235294117,25
+113,113,75,100,antónio augustocardinaldos santos marto,antonio augustocardinaldos santos marto,1947-05-05,2018-06-28,Portugal,Europe,False,0.2,28
+114,114,6,121,joãocardinalbráz de aviz,joaocardinalbraz de aviz,1947-04-24,2012-02-18,Brazil,Latin_America,False,0.12941176470588237,22
+115,115,11,23,giuseppecardinalbetori,giuseppecardinalbetori,1947-02-25,2012-02-18,Italy,Europe,False,0.5294117647058824,56
+116,116,128,36,emil paulcardinaltscherrig,emil paulcardinaltscherrig,1947-02-03,2023-09-30,Switzerland,Europe,False,0.38823529411764707,44
+117,117,28,10,thomas christophercardinalcollins,thomas christophercardinalcollins,1947-01-16,2012-02-18,Canada,North_America_Canada,False,0.6470588235294118,66
+118,118,32,124,michael f.cardinalczerny,michael f.cardinalczerny,1946-07-18,2019-10-05,Canada,North_America_Canada,False,0.11764705882352941,21
+119,119,80,63,francescocardinalmontenegro,francescocardinalmontenegro,1946-05-22,2015-02-14,Italy,Europe,False,0.3058823529411765,37
+120,120,89,101,juan josécardinalomella omella,juan josecardinalomella omella,1946-04-21,2017-06-28,Spain,Europe,False,0.2,28
+121,121,46,24,fernandocardinalfiloni,fernandocardinalfiloni,1946-04-15,2012-02-18,Italy,Europe,True,0.5176470588235295,55
+122,122,95,71,christophe louis yves georgescardinalpierre,christophe louis yves georgescardinalpierre,1946-01-30,2023-09-30,France,Europe,False,0.27058823529411763,34
+123,123,133,77,mariocardinalzenari,mariocardinalzenari,1946-01-05,2016-11-19,Italy,Europe,False,0.25882352941176473,33
+124,124,85,20,johncardinalnjue,johncardinalnjue,1946-01-01,2007-11-24,Kenya,Africa,False,0.5529411764705883,58
+125,125,91,30,philippe nakellentubacardinalouédraogo,philippe nakellentubacardinalouedraogo,1945-12-31,2014-02-22,Burkina Faso,Africa,False,0.43529411764705883,48
+126,126,63,29,jean-pierrecardinalkutwa,jean-pierrecardinalkutwa,1945-12-22,2014-02-22,Ivory Coast,Africa,False,0.4470588235294118,49
+127,127,84,18,vincent gerardcardinalnichols,vincent gerardcardinalnichols,1945-11-08,2014-02-22,United Kingdom,Europe,False,0.5647058823529412,59
+128,128,21,2,antoniocardinalcañizares llovera,antoniocardinalcanizares llovera,1945-10-15,2006-03-24,Spain,Europe,False,0.8352941176470589,82
+129,129,100,21,vinkocardinalpuljić,vinkocardinalpuljic,1945-09-08,1994-11-26,Bosnia and Herzegovina,Europe,False,0.5529411764705883,58
+130,130,101,120,timothy peter josephcardinalradcliffe,timothy peter josephcardinalradcliffe,1945-08-22,2024-12-07,United Kingdom,Europe,False,0.1411764705882353,23
+131,131,30,86,josephcardinalcoutts,josephcardinalcoutts,1945-07-21,2018-06-28,Pakistan,Asia_Middle_East,False,0.24705882352941178,32
+132,132,112,6,stanisławcardinalryłko,stanislawcardinalrylko,1945-07-04,2007-11-24,Poland,Europe,False,0.7764705882352941,77
+133,133,90,67,carloscardinalosoro sierra,carloscardinalosoro sierra,1945-05-16,2016-11-19,Spain,Europe,False,0.2823529411764706,35
