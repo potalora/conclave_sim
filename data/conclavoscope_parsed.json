@@ -2,7 +2,8 @@
     {
         "id": null,
         "name": "Raymond Leo Burke",
-        "cs_country": "United States",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 96,
         "papabile_score": null,
         "alignment_score": null
@@ -10,7 +11,8 @@
     {
         "id": null,
         "name": "Robert Sarah",
-        "cs_country": "Guinea",
+        "cs_country_raw": "Guinea",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 88,
         "papabile_score": null,
         "alignment_score": null
@@ -18,7 +20,8 @@
     {
         "id": null,
         "name": "Antonio Cañizares Llovera",
-        "cs_country": "Spain",
+        "cs_country_raw": "Spain",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 82,
         "papabile_score": null,
         "alignment_score": null
@@ -26,7 +29,8 @@
     {
         "id": null,
         "name": "Albert Malcolm Ranjith Patabendige Don",
-        "cs_country": "Sri Lanka",
+        "cs_country_raw": "Sri Lanka",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 79,
         "papabile_score": null,
         "alignment_score": null
@@ -34,7 +38,8 @@
     {
         "id": null,
         "name": "Gerhard Ludwig Müller",
-        "cs_country": "Germany",
+        "cs_country_raw": "Germany",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 79,
         "papabile_score": null,
         "alignment_score": null
@@ -42,7 +47,8 @@
     {
         "id": null,
         "name": "Willem Jacobus Eijk",
-        "cs_country": "Netherlands",
+        "cs_country_raw": "Netherlands",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 78,
         "papabile_score": null,
         "alignment_score": null
@@ -50,7 +56,8 @@
     {
         "id": null,
         "name": "Stanisław Ryłko",
-        "cs_country": "Poland",
+        "cs_country_raw": "Poland",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 77,
         "papabile_score": null,
         "alignment_score": null
@@ -58,7 +65,8 @@
     {
         "id": null,
         "name": "Désiré Tsarahazana",
-        "cs_country": "Madagascar",
+        "cs_country_raw": "Madagascar",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 76,
         "papabile_score": null,
         "alignment_score": null
@@ -66,7 +74,8 @@
     {
         "id": null,
         "name": "Dominique Mamberti",
-        "cs_country": "France",
+        "cs_country_raw": "France",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 72,
         "papabile_score": null,
         "alignment_score": null
@@ -74,7 +83,8 @@
     {
         "id": null,
         "name": "Rainer Maria Woelki",
-        "cs_country": "Germany",
+        "cs_country_raw": "Germany",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 68,
         "papabile_score": null,
         "alignment_score": null
@@ -82,7 +92,8 @@
     {
         "id": null,
         "name": "Thomas Christopher Collins",
-        "cs_country": "Canada",
+        "cs_country_raw": "Canada",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 66,
         "papabile_score": null,
         "alignment_score": null
@@ -90,7 +101,8 @@
     {
         "id": null,
         "name": "Péter Erdő",
-        "cs_country": "Hungary",
+        "cs_country_raw": "Hungary",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 65,
         "papabile_score": null,
         "alignment_score": null
@@ -98,7 +110,8 @@
     {
         "id": null,
         "name": "Timothy Dolan",
-        "cs_country": "United States",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 64,
         "papabile_score": null,
         "alignment_score": null
@@ -106,7 +119,8 @@
     {
         "id": null,
         "name": "Charles Maung Bo",
-        "cs_country": "Myanmar",
+        "cs_country_raw": "Myanmar",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 61,
         "papabile_score": null,
         "alignment_score": null
@@ -114,15 +128,17 @@
     {
         "id": null,
         "name": "James Michael Harvey",
-        "cs_country": "United States",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 61,
         "papabile_score": null,
         "alignment_score": null
     },
     {
         "id": null,
-        "name": "Josip BozanićCroatia",
-        "cs_country": "Unknown",
+        "name": "Josip Bozanić",
+        "cs_country_raw": "Croatia",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 60,
         "papabile_score": null,
         "alignment_score": null
@@ -130,7 +146,8 @@
     {
         "id": null,
         "name": "Pierbattista Pizzaballa",
-        "cs_country": "Israel",
+        "cs_country_raw": "Israel",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 60,
         "papabile_score": null,
         "alignment_score": null
@@ -138,7 +155,8 @@
     {
         "id": null,
         "name": "Philippe Barbarin",
-        "cs_country": "France",
+        "cs_country_raw": "France",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 59,
         "papabile_score": null,
         "alignment_score": null
@@ -146,7 +164,8 @@
     {
         "id": null,
         "name": "Vincent Nichols",
-        "cs_country": "United Kingdom",
+        "cs_country_raw": "United Kingdom",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 59,
         "papabile_score": null,
         "alignment_score": null
@@ -154,7 +173,8 @@
     {
         "id": null,
         "name": "Daniel Fernando Sturla Berhouet",
-        "cs_country": "Uruguay",
+        "cs_country_raw": "Uruguay",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 58,
         "papabile_score": null,
         "alignment_score": null
@@ -162,15 +182,17 @@
     {
         "id": null,
         "name": "John Njue",
-        "cs_country": "Kenya",
+        "cs_country_raw": "Kenya",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 58,
         "papabile_score": null,
         "alignment_score": null
     },
     {
         "id": null,
-        "name": "Vinko PuljićBosnia and",
-        "cs_country": "Herzegovina",
+        "name": "Vinko Puljić",
+        "cs_country_raw": "Bosnia and Herzegovina",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 58,
         "papabile_score": null,
         "alignment_score": null
@@ -178,7 +200,8 @@
     {
         "id": null,
         "name": "Anders Arborelius",
-        "cs_country": "Sweden",
+        "cs_country_raw": "Sweden",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 56,
         "papabile_score": null,
         "alignment_score": null
@@ -186,7 +209,8 @@
     {
         "id": null,
         "name": "Giuseppe Betori",
-        "cs_country": "Italy",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 56,
         "papabile_score": null,
         "alignment_score": null
@@ -194,7 +218,8 @@
     {
         "id": null,
         "name": "Fernando Filoni",
-        "cs_country": "Italy",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 55,
         "papabile_score": null,
         "alignment_score": null
@@ -202,7 +227,8 @@
     {
         "id": null,
         "name": "Daniel Nicholas DiNardo",
-        "cs_country": "United States",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 53,
         "papabile_score": null,
         "alignment_score": null
@@ -210,7 +236,8 @@
     {
         "id": null,
         "name": "Baselios Cleemis",
-        "cs_country": "India",
+        "cs_country_raw": "India",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 51,
         "papabile_score": null,
         "alignment_score": null
@@ -218,7 +245,8 @@
     {
         "id": null,
         "name": "Berhaneyesus Demerew Souraphiel",
-        "cs_country": "Ethiopia",
+        "cs_country_raw": "Ethiopia",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 51,
         "papabile_score": null,
         "alignment_score": null
@@ -226,15 +254,17 @@
     {
         "id": null,
         "name": "Protase Rugambwa",
-        "cs_country": "Tanzania",
+        "cs_country_raw": "Tanzania",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 51,
         "papabile_score": null,
         "alignment_score": null
     },
     {
         "id": null,
-        "name": "Jean",
-        "cs_country": "Pierre KutwaIvory Coast",
+        "name": "Jean-Pierre Kutwa",
+        "cs_country_raw": "Ivory Coast",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 49,
         "papabile_score": null,
         "alignment_score": null
@@ -242,7 +272,8 @@
     {
         "id": null,
         "name": "Philippe Ouédraogo",
-        "cs_country": "Burkina Faso",
+        "cs_country_raw": "Burkina Faso",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 48,
         "papabile_score": null,
         "alignment_score": null
@@ -250,7 +281,8 @@
     {
         "id": null,
         "name": "Angelo De Donatis",
-        "cs_country": "Italy",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 47,
         "papabile_score": null,
         "alignment_score": null
@@ -258,15 +290,17 @@
     {
         "id": null,
         "name": "Mario Aurelio Poli",
-        "cs_country": "Argentina",
+        "cs_country_raw": "Argentina",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 47,
         "papabile_score": null,
         "alignment_score": null
     },
     {
         "id": null,
-        "name": "Fernando ChomalíChile",
-        "cs_country": "Unknown",
+        "name": "Fernando Chomalí",
+        "cs_country_raw": "Chile",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 46,
         "papabile_score": null,
         "alignment_score": null
@@ -274,7 +308,8 @@
     {
         "id": null,
         "name": "Francisco Robles Ortega",
-        "cs_country": "Mexico",
+        "cs_country_raw": "Mexico",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 46,
         "papabile_score": null,
         "alignment_score": null
@@ -282,7 +317,8 @@
     {
         "id": null,
         "name": "Claudio Gugerotti",
-        "cs_country": "Italy",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 45,
         "papabile_score": null,
         "alignment_score": null
@@ -290,15 +326,17 @@
     {
         "id": null,
         "name": "Emil Paul Tscherrig",
-        "cs_country": "Switzerland",
+        "cs_country_raw": "Switzerland",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 44,
         "papabile_score": null,
         "alignment_score": null
     },
     {
         "id": null,
-        "name": "Fridolin Ambongo BesunguPapabileDemocratic Republic of the",
-        "cs_country": "Congo",
+        "name": "Fridolin Ambongo Besungu",
+        "cs_country_raw": "Democratic Republic of the Congo",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 44,
         "papabile_score": null,
         "alignment_score": null
@@ -306,7 +344,8 @@
     {
         "id": null,
         "name": "Louis Raphaël I Sako",
-        "cs_country": "Iraq",
+        "cs_country_raw": "Iraq",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 44,
         "papabile_score": null,
         "alignment_score": null
@@ -314,7 +353,8 @@
     {
         "id": null,
         "name": "Virgílio do Carmo da Silva",
-        "cs_country": "East Timor",
+        "cs_country_raw": "East Timor",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 44,
         "papabile_score": null,
         "alignment_score": null
@@ -322,7 +362,8 @@
     {
         "id": null,
         "name": "Frank Leo",
-        "cs_country": "Canada",
+        "cs_country_raw": "Canada",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 43,
         "papabile_score": null,
         "alignment_score": null
@@ -330,7 +371,8 @@
     {
         "id": null,
         "name": "Giuseppe Petrocchi",
-        "cs_country": "Italy",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 43,
         "papabile_score": null,
         "alignment_score": null
@@ -338,7 +380,8 @@
     {
         "id": null,
         "name": "Gérald Cyprien Lacroix",
-        "cs_country": "Canada",
+        "cs_country_raw": "Canada",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 43,
         "papabile_score": null,
         "alignment_score": null
@@ -346,7 +389,8 @@
     {
         "id": null,
         "name": "Pietro Parolin",
-        "cs_country": "Italy",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 43,
         "papabile_score": null,
         "alignment_score": null
@@ -354,7 +398,8 @@
     {
         "id": null,
         "name": "Kazimierz Nycz",
-        "cs_country": "Poland",
+        "cs_country_raw": "Poland",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 42,
         "papabile_score": null,
         "alignment_score": null
@@ -362,7 +407,8 @@
     {
         "id": null,
         "name": "Kurt Koch",
-        "cs_country": "Switzerland",
+        "cs_country_raw": "Switzerland",
+        "is_papabile_from_name_cell_raw": true,
         "total_score": 42,
         "papabile_score": null,
         "alignment_score": null
@@ -370,7 +416,8 @@
     {
         "id": null,
         "name": "Peter Ebere Okpaleke",
-        "cs_country": "Nigeria",
+        "cs_country_raw": "Nigeria",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 42,
         "papabile_score": null,
         "alignment_score": null
@@ -378,7 +425,8 @@
     {
         "id": null,
         "name": "Filipe Neri António Sebastião do Rosário Ferrão",
-        "cs_country": "India",
+        "cs_country_raw": "India",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 41,
         "papabile_score": null,
         "alignment_score": null
@@ -386,16 +434,783 @@
     {
         "id": null,
         "name": "Francis Xavier Kriengsak Kovitvanit",
-        "cs_country": "Thailand",
+        "cs_country_raw": "Thailand",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 41,
         "papabile_score": null,
         "alignment_score": null
     },
     {
         "id": null,
-        "name": "François",
-        "cs_country": "Xavier BustilloFrance",
+        "name": "François-Xavier Bustillo",
+        "cs_country_raw": "France",
+        "is_papabile_from_name_cell_raw": false,
         "total_score": 41,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Odilo Pedro Scherer",
+        "cs_country_raw": "Brazil",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 41,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "William Goh",
+        "cs_country_raw": "Singapore",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 41,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Orani João Tempesta",
+        "cs_country_raw": "Brazil",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 40,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Ignace Bessi Dogbo",
+        "cs_country_raw": "Ivory Coast",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 39,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Juan de la Caridad García Rodríguez",
+        "cs_country_raw": "Cuba",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 39,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Manuel do Nascimento Clemente",
+        "cs_country_raw": "Portugal",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 39,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Oscar Cantoni",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 39,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Peter Kodwo Appiah Turkson",
+        "cs_country_raw": "Ghana",
+        "is_papabile_from_name_cell_raw": true,
+        "total_score": 39,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Thomas Aquinas Manyo Maeda",
+        "cs_country_raw": "Japan",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 39,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Dominique Mathieu",
+        "cs_country_raw": "Iran",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 38,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "George Jacob Koovakad",
+        "cs_country_raw": "India",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 38,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Luis Cabrera Herrera",
+        "cs_country_raw": "Ecuador",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 38,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Arlindo Gomes Furtado",
+        "cs_country_raw": "Cape Verde",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 37,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Francesco Montenegro",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 37,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Rolandas Makrickas",
+        "cs_country_raw": "Lithuania",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 37,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Jean-Marc Aveline",
+        "cs_country_raw": "France",
+        "is_papabile_from_name_cell_raw": true,
+        "total_score": 36,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Mykola Bychok",
+        "cs_country_raw": "Australia",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 36,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Carlos Osoro Sierra",
+        "cs_country_raw": "Spain",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 35,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Grzegorz Ryś",
+        "cs_country_raw": "Poland",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 35,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Antoine Kambanda",
+        "cs_country_raw": "Rwanda",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 34,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Chibly Langlois",
+        "cs_country_raw": "Haiti",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 34,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Christophe Pierre",
+        "cs_country_raw": "France",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 34,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Dieudonné Nzapalainga",
+        "cs_country_raw": "Central African Republic",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 34,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Jose Fuerte Advincula",
+        "cs_country_raw": "Philippines",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 34,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Vicente Bokalic Iglic",
+        "cs_country_raw": "Argentina",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 34,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Adalberto Martínez Flores",
+        "cs_country_raw": "Paraguay",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 33,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Kevin Farrell",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 33,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Mario Zenari",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 33,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Robert Francis Prevost",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 33,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Stephen Ameyu Martin Mulla",
+        "cs_country_raw": "South Sudan",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 33,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Stephen Brislin",
+        "cs_country_raw": "South Africa",
+        "is_papabile_from_name_cell_raw": true,
+        "total_score": 33,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Wilton Gregory",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 33,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Álvaro Leonel Ramazzini Imeri",
+        "cs_country_raw": "Guatemala",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 33,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Arthur Roche",
+        "cs_country_raw": "United Kingdom",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 32,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Baldassare Reina",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 32,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Giorgio Marengo",
+        "cs_country_raw": "Mongolia",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 32,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Joseph Coutts",
+        "cs_country_raw": "Pakistan",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 32,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Paulo Cezar Costa",
+        "cs_country_raw": "Brazil",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 32,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Soane Patita Paini Mafi",
+        "cs_country_raw": "Tonga",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 32,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Sérgio da Rocha",
+        "cs_country_raw": "Brazil",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 32,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Cristóbal López Romero",
+        "cs_country_raw": "Morocco",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 31,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Lazarus You Heung-sik",
+        "cs_country_raw": "South Korea",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 31,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Leopoldo José Brenes Solórzano",
+        "cs_country_raw": "Nicaragua",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 31,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Ángel Sixto Rossi",
+        "cs_country_raw": "Argentina",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 31,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "José Cobo Cano",
+        "cs_country_raw": "Spain",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 30,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Konrad Krajewski",
+        "cs_country_raw": "Poland",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 30,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Américo Alves Aguiar",
+        "cs_country_raw": "Portugal",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 29,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Domenico Battaglia",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 29,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Fabio Baggio",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 29,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Anthony Poola",
+        "cs_country_raw": "India",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 28,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Antonio dos Santos Marto",
+        "cs_country_raw": "Portugal",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 28,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Juan José Omella",
+        "cs_country_raw": "Spain",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 28,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Mauro Gambetti",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 28,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Sebastian Francis",
+        "cs_country_raw": "Malaysia",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 28,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Stephen Chow Sau-yan",
+        "cs_country_raw": "Hong Kong",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 28,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "John Ribat",
+        "cs_country_raw": "Papua New Guinea",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 27,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Tarcisio Isao Kikuchi",
+        "cs_country_raw": "Japan",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 27,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Carlos Aguiar Retes",
+        "cs_country_raw": "Mexico",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 26,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Ladislav Nemet",
+        "cs_country_raw": "Serbia",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 26,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Luis José Rueda Aparicio",
+        "cs_country_raw": "Colombia",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 26,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Pablo Virgilio David",
+        "cs_country_raw": "Philippines",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 26,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "John Atcherley Dew",
+        "cs_country_raw": "New Zealand",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 25,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Jozef De Kesel",
+        "cs_country_raw": "Belgium",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 25,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Ignatius Suharyo Hardjoatmodjo",
+        "cs_country_raw": "Indonesia",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 24,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Mario Grech",
+        "cs_country_raw": "Malta",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 24,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Ángel Fernández Artime",
+        "cs_country_raw": "Spain",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 24,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Jaime Spengler",
+        "cs_country_raw": "Brazil",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 23,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Jean-Paul Vesco",
+        "cs_country_raw": "Algeria",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 23,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Marcello Semeraro",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 23,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Matteo Maria Zuppi",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": true,
+        "total_score": 23,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Timothy Radcliffe",
+        "cs_country_raw": "United Kingdom",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 23,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "João Braz de Aviz",
+        "cs_country_raw": "Brazil",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 22,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Joseph Tobin",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 21,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "José Tolentino de Mendonça",
+        "cs_country_raw": "Portugal",
+        "is_papabile_from_name_cell_raw": true,
+        "total_score": 21,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Michael Czerny",
+        "cs_country_raw": "Canada",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 21,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Luis Antonio Tagle",
+        "cs_country_raw": "Philippines",
+        "is_papabile_from_name_cell_raw": true,
+        "total_score": 20,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Augusto Paolo Lojudice",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 19,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Roberto Repole",
+        "cs_country_raw": "Italy",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 19,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Reinhard Marx",
+        "cs_country_raw": "Germany",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 16,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Blase Cupich",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 12,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Carlos Castillo Mattasoglio",
+        "cs_country_raw": "Peru",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 12,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Leonardo Ulrich Steiner",
+        "cs_country_raw": "Brazil",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 12,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Víctor Manuel Fernández",
+        "cs_country_raw": "Argentina",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 12,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Jean-Claude Hollerich",
+        "cs_country_raw": "Luxembourg",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 11,
+        "papabile_score": null,
+        "alignment_score": null
+    },
+    {
+        "id": null,
+        "name": "Robert McElroy",
+        "cs_country_raw": "United States",
+        "is_papabile_from_name_cell_raw": false,
+        "total_score": 11,
         "papabile_score": null,
         "alignment_score": null
     }

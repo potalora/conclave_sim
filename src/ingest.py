@@ -17,6 +17,35 @@ import google.generativeai as genai
 from .utils import setup_logging
 from .match_names import match_datasets_llm # Updated import
 
+# --- Global Constants for File Paths and Column Names ---
+# Assuming GCATHOLIC_RAW_FILENAME, CATHOLIC_HIERARCHY_RAW_FILENAME, etc., are defined above this.
+# Add the new region map filename constant
+REGION_MAP_FILENAME = "country_to_region_map.json"
+
+# Define the final set of columns expected in the output CSV
+# This list determines the order and selection of columns for the final output.
+FINAL_OUTPUT_COLUMNS = [
+    'elector_id',
+    'name_clean',
+    'name_clean_ascii',
+    'dob',
+    'date_cardinal',
+    'country_final', # The coalesced country name
+    'region',        # NEW: Add region column
+    'is_papabile',   # Ensure 'is_papabile' is here
+    'ideology_score', # Derived from cs_total_score, normalized
+    'cs_total_score', # Raw from Conclavoscope, used for ideology_score
+    'gc_id', # Original GCatholic ID
+    'ch_id', # Original Catholic Hierarchy ID
+    'cs_id', # Original Conclavoscope ID
+    'gc_name_raw',
+    'ch_name_raw',
+    'cs_name_raw',
+    'ch_country_extracted',
+    'cs_country_raw',
+    'is_papabile_from_name_cell_raw'
+]
+
 def _process_and_merge_data(
     gc_raw_path: Path,
     ch_raw_path: Path,
@@ -28,25 +57,9 @@ def _process_and_merge_data(
     force_llm_match: bool, # Base GC/CH match (currently unused here, handled externally)
     force_conclavoscope_match: bool
 ) -> bool:
-    """Processes raw data, runs matching, merges, and saves the final elector dataset.
-
-    Args:
-        gc_raw_path: Path to raw GCatholic data CSV.
-        ch_raw_path: Path to raw Catholic Hierarchy data CSV.
-        llm_match_path: Path to JSON file with base LLM matches (gc_id <-> ch_id).
-        conclavoscope_json_path: Path to parsed Conclavoscope JSON data.
-        conclavoscope_llm_match_path: Path to JSON file with Conclavoscope LLM matches.
-        merged_output_path: Path to save the final merged CSV.
-        cache_dir: Path to the cache directory.
-        force_llm_match: Flag to force base GC/CH matching (external process).
-        force_conclavoscope_match: Flag to force Conclavoscope LLM matching.
-
-    Returns:
-        True if processing and saving were successful, False otherwise.
-    """
     log = setup_logging(level=logging.DEBUG) # Set level to DEBUG
 
-    try: # AI: Added try block to wrap the main processing steps
+    try:
         # --- 1. Create Cache Directory --- (Already done in main block, but ensure here too)
         cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -95,7 +108,7 @@ def _process_and_merge_data(
         # Extract Country from 'Current Title'
         title_col = 'Current Title' # As identified previously
         if title_col in ch_df.columns:
-             ch_df['country'] = ch_df[title_col].str.extract(r'of\s+([^,]+),')[0].str.strip()
+             ch_df['country'] = ch_df[title_col].str.extract(r'of\s+(?:.+,,\s)?([^,]+)')[0].str.strip()
              missing_country_count = ch_df['country'].isna().sum()
              if missing_country_count > 0:
                   log.warning(f"Could not extract country for {missing_country_count} / {len(ch_df)} records from CH '{title_col}'.")
@@ -193,127 +206,51 @@ def _process_and_merge_data(
                     conclave_data = json.load(f)
                 conclave_df = pd.DataFrame(conclave_data)
                 # Rename columns for clarity and to avoid clashes
-                conclave_df.rename(columns={
-                    'id': 'cs_id',
-                    'name': 'cs_name_raw',
-                    # 'cs_country' is already named correctly from the scrape step
-                    'papabile_score': 'cs_papabile_score',
-                    'alignment_score': 'cs_alignment_score',
-                    'total_score': 'cs_total_score'
-                }, inplace=True)
+                rename_map = {
+                    'id': 'cs_id',                       # Was 'ID'
+                    'name': 'cs_name_raw',               # Was 'Name'
+                    # 'cs_country' in JSON is already the target name, so no rename needed for it if present.
+                    # If JSON had 'Country' and we wanted 'cs_country': 'Country': 'cs_country',
+                    'papabile_score': 'cs_papabile_score', # Was 'Papabile Score'
+                    'alignment_score': 'cs_alignment_score', # Was 'Alignment Score'
+                    'total_score': 'cs_total_score'      # Was 'Total Score'
+                }
+                cols_to_rename = {k: v for k, v in rename_map.items() if k in conclave_df.columns}
+                conclave_df.rename(columns=cols_to_rename, inplace=True)
+                # AI: If the original 'id' (now 'cs_id') was all null from JSON,
+                # the LLM matching would have used temporary 0-indexed IDs.
+                # Replicate that here for conclave_df's cs_id before merging.
+                if 'cs_id' in conclave_df.columns and conclave_df['cs_id'].isnull().all():
+                    log.warning("Original 'cs_id' column in Conclavoscope data is all null. Replacing with sequential IDs (0 to N-1) to match LLM temporary IDs.")
+                    conclave_df['cs_id'] = range(len(conclave_df))
+                elif 'cs_id' not in conclave_df.columns:
+                    log.warning("'cs_id' column not found after rename. Creating sequential IDs (0 to N-1) as a fallback.")
+                    conclave_df['cs_id'] = range(len(conclave_df))
+
                 conclave_df['cs_id'] = conclave_df['cs_id'].astype(str)
                 log.info(f"Loaded and preprocessed {len(conclave_df)} Conclavoscope records.")
+                if 'cs_total_score' in conclave_df.columns:
+                    log.debug(f"Conclavoscope data ('conclave_df'): 'cs_total_score' non-NaN count: {conclave_df['cs_total_score'].notna().sum()} out of {len(conclave_df)}")
+                    log.debug(f"Conclavoscope data ('conclave_df'): 'cs_total_score' head:\n{conclave_df['cs_total_score'].head().to_string()}")
+                    log.debug(f"Conclavoscope data ('conclave_df'): 'cs_total_score' dtype: {conclave_df['cs_total_score'].dtype}")
+                else:
+                    log.debug("Conclavoscope data ('conclave_df'): 'cs_total_score' column MISSING after load and rename.")
 
                 # Check if cs_country column exists after scraping
                 if 'cs_country' not in conclave_df.columns:
                     log.warning("Column 'cs_country' not found in Conclavoscope data. Country coalescing might be incomplete.")
                     conclave_df['cs_country'] = pd.NA # Add column if missing
 
-                # --- 8. Match Conclavoscope Data --- #
-                # Requires GOOGLE_API_KEY environment variable
-                api_key = os.getenv("GOOGLE_API_KEY")
-                conclave_llm_matches_df = pd.DataFrame() # Initialize empty matches df
-                run_conclavoscope_matching = False
-
-                # Check if matching is needed (file doesn't exist or forced)
-                if not conclavoscope_llm_match_path.exists() or force_conclavoscope_match:
-                    if api_key:
-                        log.info(f"Conclavoscope LLM match file {'not found' if not conclavoscope_llm_match_path.exists() else 'found but forcing re-match'}. Running LLM matching.")
-                        run_conclavoscope_matching = True
+                # AI: Add targeted logging for problematic cardinals' raw ConclaveScope data
+                problematic_cs_names_to_log = ["Robert Sarah", "José Tolentino Calaça de Mendonça", "Fernando Filoni"]
+                log.debug("--- ConclaveScope Raw Data for Problematic Cardinals ---")
+                for name_to_check in problematic_cs_names_to_log:
+                    entry = conclave_df[conclave_df['cs_name_raw'].str.contains(name_to_check, case=False, na=False)]
+                    if not entry.empty:
+                        log.debug(f"Raw CS entry for '{name_to_check}':\n{entry[['cs_name_raw', 'cs_country', 'cs_total_score', 'is_papabile_from_name_cell_raw']].to_string()}")
                     else:
-                        log.warning("GOOGLE_API_KEY not set. Cannot perform Conclavoscope LLM matching. Skipping.")
-                else:
-                    log.info(f"Using existing Conclavoscope LLM matches from: {conclavoscope_llm_match_path}")
-                    try:
-                        with open(conclavoscope_llm_match_path, 'r', encoding='utf-8') as f:
-                            conclave_matches_list = json.load(f)
-                        conclave_llm_matches_df = pd.DataFrame(conclave_matches_list)
-                        if not conclave_llm_matches_df.empty:
-                            conclave_llm_matches_df['elector_id'] = conclave_llm_matches_df['elector_id'].astype(str)
-                            conclave_llm_matches_df['cs_id'] = conclave_llm_matches_df['cs_id'].astype(str)
-                        log.info(f"Loaded {len(conclave_llm_matches_df)} existing Conclavoscope matches.")
-                    except Exception as e:
-                        log.error("Error loading existing Conclavoscope matches from %s: %s. Attempting re-match if API key available.", conclavoscope_llm_match_path, e)
-                        if api_key:
-                            run_conclavoscope_matching = True # Try to re-generate matches
-                        else:
-                            log.warning("GOOGLE_API_KEY not set. Cannot re-run Conclavoscope LLM matching after load error. Skipping.")
-                            # Proceeding without Conclavoscope scores as we can't load or regenerate
-
-                # Perform LLM matching if needed and possible
-                if run_conclavoscope_matching and not base_merged_df.empty and not conclave_df.empty:
-                    log.info("Starting LLM matching for Conclavoscope data...")
-                    # Ensure match_datasets_llm is imported or defined
-                    merged_df_for_cs_match = base_merged_df.copy()
-                    if 'elector_id' not in merged_df_for_cs_match.columns:
-                        # This case should ideally not happen if _merge_gc_ch creates elector_id
-                        log.warning("'elector_id' not found in merged_df. Attempting to use index as fallback for matching.")
-                        merged_df_for_cs_match['elector_id'] = merged_df_for_cs_match.index
-                    if 'name_clean_ascii' not in merged_df_for_cs_match.columns: # Changed 'name' to 'name_clean_ascii'
-                        log.error("'name_clean_ascii' column not found in merged_df_for_cs_match. Cannot proceed with Conclavoscope matching.")
-                        return False
-                    
-                    if 'cs_id' not in conclave_df.columns or 'cs_name_raw' not in conclave_df.columns: # Changed 'cs_name' to 'cs_name_raw'
-                        log.error("'cs_id' or 'cs_name_raw' not found in Conclavoscope data. Cannot proceed with matching.")
-                        return False
-
-                    cs_matches = match_datasets_llm(
-                        df1=merged_df_for_cs_match,
-                        df1_name_col='name_clean_ascii',  # Name column in the merged elector list
-                        df1_id_col='elector_id',        # ID column in the merged elector list
-                        df2=conclave_df,
-                        df2_name_col='cs_name_raw', # Name column in Conclavoscope data
-                        df2_id_col='cs_id',          # ID column in Conclavoscope data
-                        output_path=conclavoscope_llm_match_path,
-                        dataset1_label="Current Electors",
-                        dataset2_label="Conclavoscope"
-                    )
-                    if cs_matches: # If matches were returned
-                        conclave_llm_matches_df = pd.DataFrame(cs_matches)
-                        if not conclave_llm_matches_df.empty:
-                            # Ensure column types are consistent with loaded matches
-                            if 'elector_id' in conclave_llm_matches_df.columns:
-                                conclave_llm_matches_df['elector_id'] = conclave_llm_matches_df['elector_id'].astype(str)
-                            if 'cs_id' in conclave_llm_matches_df.columns:
-                                conclave_llm_matches_df['cs_id'] = conclave_llm_matches_df['cs_id'].astype(str)
-                            log.info(f"Successfully generated and processed {len(conclave_llm_matches_df)} Conclavoscope LLM matches.")
-                        else:
-                            log.warning("LLM matching for Conclavoscope data returned an empty list/DataFrame.")
-                            conclave_llm_matches_df = pd.DataFrame() # Ensure it's an empty DataFrame
-                    else: # cs_matches is None or empty list
-                        log.warning("LLM matching for Conclavoscope data did not return any matches or failed.")
-                        conclave_llm_matches_df = pd.DataFrame() # Ensure it's an empty DataFrame
-                elif run_conclavoscope_matching:
-                    log.warning("Cannot run Conclavoscope LLM matching because base or Conclavoscope data is empty.")
-
-                # --- 9. Merge Conclavoscope Scores --- #
-                if not conclave_df.empty and not conclave_llm_matches_df.empty and 'elector_id' in conclave_llm_matches_df.columns:
-                    # Prepare Conclavoscope columns to merge
-                    cs_cols_to_merge = ['cs_id', 'cs_name_raw', 'cs_country', 'cs_papabile_score', 'cs_alignment_score', 'cs_total_score']
-                    missing_cs_cols = [col for col in cs_cols_to_merge if col not in conclave_df.columns]
-                    if missing_cs_cols:
-                        log.warning(f"Missing expected columns in Conclavoscope data for merge: {missing_cs_cols}")
-                        cs_cols_to_merge = [col for col in cs_cols_to_merge if col not in missing_cs_cols]
-
-                    if cs_cols_to_merge:
-                        # Merge based on LLM matches (elector_id <-> cs_id)
-                        log.info("Merging Conclavoscope scores into the main dataset...")
-                        # Select only the necessary columns from matches and CS data
-                        matches_subset = conclave_llm_matches_df[['elector_id', 'cs_id']] # Map base elector_id to cs_id
-                        cs_data_subset = conclave_df[cs_cols_to_merge]
-                        # Merge matches with CS data
-                        cs_data_to_merge = pd.merge(matches_subset, cs_data_subset, on='cs_id', how='left')
-                        # Merge this into the base merged data
-                        # NOTE: Re-assign to final_merged_df here
-                        final_merged_df = pd.merge(base_merged_df, cs_data_to_merge.drop(columns=['cs_id']), on='elector_id', how='left') # Drop cs_id after merge
-                        merged_score_count = final_merged_df['cs_total_score'].notna().sum()
-                        log.info(f"Successfully merged Conclavoscope scores for {merged_score_count} electors.")
-                    else:
-                        log.warning("Skipping Conclavoscope score merge as no valid columns were found.")
-                        # final_merged_df remains base_merged_df
-                else:
-                    log.info("Skipping Conclavoscope score merge (no data or no matches).")
-                    # final_merged_df remains base_merged_df
+                        log.debug(f"No raw CS entry found for '{name_to_check}'.")
+                log.debug("-------------------------------------------------------")
 
             except FileNotFoundError:
                 log.error(f"Conclavoscope data file disappeared unexpectedly after check: {conclavoscope_json_path}.")
@@ -321,38 +258,220 @@ def _process_and_merge_data(
                 log.error("Error processing Conclavoscope data: %s", e)
                 log.error("Detailed error (repr): %r", e)
                 log.error("Detailed error type: %s", type(e))
-                # Treat error as non-fatal, skip Conclavoscope merge
                 log.warning("Proceeding without Conclavoscope scores due to processing error.")
         else:
-            # This block executes if the file was not found by os.path.exists()
-            log.warning(f"Conclavoscope data file not found at {conclavoscope_json_path}. Proceeding without Conclavoscope scores.")
-            # final_merged_df remains base_merged_df (already initialized)
+            # This block executes if the file was not found by os.path.exists() or was empty
+            log.warning(f"Conclavoscope data file not found or empty at {conclavoscope_json_path}. Proceeding without Conclavoscope scores.")
+            # final_merged_df remains base_merged_df (already initialized from base_merged_df)
 
-        # --- 10. Coalesce Country Information --- #
-        log.info("Coalescing final country information...")
-        final_country_col = 'country' # Final desired column name
+        # --- 8. Match Conclavoscope Data --- #
+        # Requires GOOGLE_API_KEY environment variable
+        api_key = os.getenv("GOOGLE_API_KEY")
+        conclave_llm_matches_df = pd.DataFrame() # Initialize empty matches df
+        run_conclavoscope_matching = False
 
-        # Initialize with NA
-        final_merged_df[final_country_col] = pd.NA
-
-        # Apply coalescing with priority: cs_country -> ch_country_extracted -> gc_country_raw
-        if 'cs_country' in final_merged_df.columns:
-            log.info("Prioritizing country from Conclavoscope ('cs_country').")
-            final_merged_df[final_country_col] = final_merged_df[final_country_col].combine_first(final_merged_df['cs_country'])
+        # Check if matching is needed (file doesn't exist or forced)
+        if not conclavoscope_llm_match_path.exists() or force_conclavoscope_match:
+            if api_key:
+                log.info(f"Conclavoscope LLM match file {'not found' if not conclavoscope_llm_match_path.exists() else 'found but forcing re-match'}. Running LLM matching.")
+                run_conclavoscope_matching = True
+            else:
+                log.warning("GOOGLE_API_KEY not set. Cannot perform Conclavoscope LLM matching. Skipping.")
         else:
-            log.warning("'cs_country' column not available for coalescing.")
+            log.info(f"Using existing Conclavoscope LLM matches from: {conclavoscope_llm_match_path}")
+            try:
+                with open(conclavoscope_llm_match_path, 'r', encoding='utf-8') as f:
+                    conclave_matches_list = json.load(f)
+                conclave_llm_matches_df = pd.DataFrame(conclave_matches_list)
+                if not conclave_llm_matches_df.empty:
+                    conclave_llm_matches_df['elector_id'] = conclave_llm_matches_df['elector_id'].astype(str)
+                    conclave_llm_matches_df['cs_id'] = conclave_llm_matches_df['cs_id'].astype(str)
+                log.info(f"Loaded {len(conclave_llm_matches_df)} existing Conclavoscope matches.")
+            except Exception as e:
+                log.error("Error loading existing Conclavoscope matches from %s: %s. Attempting re-match if API key available.", conclavoscope_llm_match_path, e)
+                if api_key:
+                    run_conclavoscope_matching = True # Try to re-generate matches
+                else:
+                    log.warning("GOOGLE_API_KEY not set. Cannot re-run Conclavoscope LLM matching after load error. Skipping.")
+                    # Proceeding without Conclavoscope scores as we can't load or regenerate
+
+        # Perform LLM matching if needed and possible
+        if run_conclavoscope_matching and not base_merged_df.empty and not conclave_df.empty:
+            log.info("Starting LLM matching for Conclavoscope data...")
+            # Ensure match_datasets_llm is imported or defined
+            merged_df_for_cs_match = base_merged_df.copy()
+            if 'elector_id' not in merged_df_for_cs_match.columns:
+                # This case should ideally not happen if _merge_gc_ch creates elector_id
+                log.warning("'elector_id' not found in merged_df. Attempting to use index as fallback for matching.")
+                merged_df_for_cs_match['elector_id'] = merged_df_for_cs_match.index
+            if 'name_clean_ascii' not in merged_df_for_cs_match.columns: # Changed 'name' to 'name_clean_ascii'
+                log.error("'name_clean_ascii' column not found in merged_df_for_cs_match. Cannot proceed with Conclavoscope matching.")
+                return False
+            
+            if 'cs_id' not in conclave_df.columns or 'cs_name_raw' not in conclave_df.columns: # Changed 'cs_name' to 'cs_name_raw'
+                log.error("'cs_id' or 'cs_name_raw' not found in Conclavoscope data. Cannot proceed with matching.")
+                return False
+
+            cs_matches = match_datasets_llm(
+                df1=merged_df_for_cs_match,
+                df1_name_col='name_clean_ascii',  # Name column in the merged elector list
+                df1_id_col='elector_id',        # ID column in the merged elector list
+                df2=conclave_df,
+                df2_name_col='cs_name_raw', # Name column in Conclavoscope data
+                df2_id_col='cs_id',          # ID column in Conclavoscope data
+                output_path=conclavoscope_llm_match_path,
+                dataset1_label="Current Electors",
+                dataset2_label="Conclavoscope"
+            )
+            if cs_matches: # If matches were returned
+                conclave_llm_matches_df = pd.DataFrame(cs_matches)
+                if not conclave_llm_matches_df.empty:
+                    # Ensure column types are consistent with loaded matches
+                    if 'elector_id' in conclave_llm_matches_df.columns:
+                        conclave_llm_matches_df['elector_id'] = conclave_llm_matches_df['elector_id'].astype(str)
+                    if 'cs_id' in conclave_llm_matches_df.columns:
+                        conclave_llm_matches_df['cs_id'] = conclave_llm_matches_df['cs_id'].astype(str)
+                    log.info(f"Successfully generated and processed {len(conclave_llm_matches_df)} Conclavoscope LLM matches.")
+                else:
+                    log.warning("LLM matching for Conclavoscope data returned an empty list/DataFrame.")
+                    conclave_llm_matches_df = pd.DataFrame() # Ensure it's an empty DataFrame
+            else: # cs_matches is None or empty list
+                log.warning("LLM matching for Conclavoscope data did not return any matches or failed.")
+                conclave_llm_matches_df = pd.DataFrame() # Ensure it's an empty DataFrame
+        elif run_conclavoscope_matching:
+            log.warning("Cannot run Conclavoscope LLM matching because base or Conclavoscope data is empty.")
+
+        # --- 9. Merge Conclavoscope Scores --- #
+        if not conclave_df.empty and not conclave_llm_matches_df.empty and 'elector_id' in conclave_llm_matches_df.columns:
+            # Prepare Conclavoscope columns to merge
+            # AI: Updated to use new raw fields from scraper
+            cs_cols_to_merge = [
+                'cs_id', 'cs_name_raw', 
+                'cs_country_raw',  # Use the cleanly scraped country
+                'is_papabile_from_name_cell_raw', # New flag from name cell
+                'cs_papabile_score', 
+                'cs_alignment_score', 'cs_total_score'
+            ]
+            missing_cs_cols = [col for col in cs_cols_to_merge if col not in conclave_df.columns]
+            if missing_cs_cols:
+                log.warning(f"Missing expected columns in Conclavoscope data for merge: {missing_cs_cols}")
+                cs_cols_to_merge = [col for col in cs_cols_to_merge if col not in missing_cs_cols]
+
+            if cs_cols_to_merge:
+                # Merge based on LLM matches (elector_id <-> cs_id)
+                log.info("Merging Conclavoscope scores into the main dataset...")
+                # Select only the necessary columns from matches and CS data
+                matches_subset = conclave_llm_matches_df[['elector_id', 'cs_id']] # Map base elector_id to cs_id
+                cs_data_subset = conclave_df[cs_cols_to_merge]
+                # Merge matches with CS data
+                cs_data_to_merge = pd.merge(matches_subset, cs_data_subset, on='cs_id', how='left')
+                log.debug(f"cs_data_to_merge dataframe to be merged with base_merged_df. Shape: {cs_data_to_merge.shape}")
+                log.debug(f"cs_data_to_merge head:\n{cs_data_to_merge.head().to_string()}")
+                if 'cs_total_score' in cs_data_to_merge.columns:
+                    log.debug(f"cs_data_to_merge: 'cs_total_score' non-NaN count: {cs_data_to_merge['cs_total_score'].notna().sum()}")
+                    log.debug(f"cs_data_to_merge: 'cs_total_score' dtype: {cs_data_to_merge['cs_total_score'].dtype}")
+                else:
+                    log.debug("cs_data_to_merge: 'cs_total_score' column MISSING.")
+                # Merge this into the base merged data
+                # NOTE: Re-assign to final_merged_df here
+                final_merged_df = pd.merge(base_merged_df, cs_data_to_merge, on='elector_id', how='left') 
+                merged_score_count = final_merged_df['cs_total_score'].notna().sum()
+                log.info(f"Successfully merged Conclavoscope scores for {merged_score_count} electors.")
+            else:
+                log.warning("Skipping Conclavoscope score merge as no valid columns were found.")
+                # final_merged_df remains base_merged_df
+        else:
+            log.info("Skipping Conclavoscope score merge (no data or no matches).")
+            # final_merged_df remains base_merged_df
+
+        # --- 9.1. Create 'is_papabile' flag --- #
+        log.info("Determining final 'is_papabile' status...")
+        # Initialize 'is_papabile' to False. If Conclavoscope data wasn't merged,
+        # 'is_papabile_from_name_cell_raw' and 'cs_papabile_score' might not exist.
+        final_merged_df['is_papabile'] = False
+
+        if 'is_papabile_from_name_cell_raw' in final_merged_df.columns:
+            # Ensure the column is boolean or can be safely converted
+            # Convert to boolean, treating non-True as False
+            final_merged_df['is_papabile_from_name_cell_raw'] = final_merged_df['is_papabile_from_name_cell_raw'].astype(bool)
+            final_merged_df.loc[final_merged_df['is_papabile_from_name_cell_raw'] == True, 'is_papabile'] = True
+            log.info(f"Set 'is_papabile' based on 'is_papabile_from_name_cell_raw' for {final_merged_df['is_papabile_from_name_cell_raw'].sum()} electors.")
+        else:
+            log.warning("'is_papabile_from_name_cell_raw' column not found. Cannot use it for 'is_papabile' flag initial setting.")
+
+        if 'cs_papabile_score' in final_merged_df.columns:
+            papabile_score_str = final_merged_df['cs_papabile_score'].astype(str).str.strip().str.lower()
+            missing_score_indicators = ['none', 'nan', 'na', 'n/a', '', str(pd.NA).lower(), 'false'] # Added 'false'
+            
+            valid_papabile_score_mask = (
+                final_merged_df['cs_papabile_score'].notna() & 
+                (~papabile_score_str.isin(missing_score_indicators))
+            )
+            # Update is_papabile to True if a valid score exists, preserving existing True values
+            final_merged_df.loc[valid_papabile_score_mask, 'is_papabile'] = True
+            log.info(f"Updated 'is_papabile' based on 'cs_papabile_score' for {valid_papabile_score_mask.sum()} potential electors (cumulative). Current total: {final_merged_df['is_papabile'].sum()}.")
+        else:
+            log.warning("'cs_papabile_score' column not found. Cannot use it for 'is_papabile' flag update.")
+        
+        log.info(f"Total electors marked as 'is_papabile': {final_merged_df['is_papabile'].sum()})")
+
+        # --- 9.2. Coalesce Country Information --- #
+        log.info("Coalescing final country information into 'country_final'...")
+        # Initialize with NA
+        final_merged_df['country_final'] = pd.NA
+
+        # Priority: cs_country_raw -> ch_country_extracted -> (potentially gc_country_raw if available & reliable)
+        if 'cs_country_raw' in final_merged_df.columns:
+            log.info("Prioritizing country from Conclavoscope ('cs_country_raw').")
+            final_merged_df['country_final'] = final_merged_df['country_final'].combine_first(final_merged_df['cs_country_raw'])
+        else:
+            log.warning("'cs_country_raw' column not available for coalescing.")
 
         if 'ch_country_extracted' in final_merged_df.columns:
             log.info("Falling back to country extracted from Catholic Hierarchy ('ch_country_extracted').")
-            final_merged_df[final_country_col] = final_merged_df[final_country_col].combine_first(final_merged_df['ch_country_extracted'])
+            final_merged_df['country_final'] = final_merged_df['country_final'].combine_first(final_merged_df['ch_country_extracted'])
         else:
             log.warning("'ch_country_extracted' column not available for coalescing.")
 
-        # Log final country count
-        country_count = final_merged_df[final_country_col].notna().sum()
-        log.info(f"Final dataset contains country information for {country_count} / {len(final_merged_df)} electors.")
+        # GCatholic country as a final fallback if it were available and deemed reliable
+        # For now, assuming it's not as robust as the other two sources for this specific field.
+        # Example: if 'gc_country_raw' in final_merged_df.columns: 
+        #    final_merged_df['country_final'] = final_merged_df['country_final'].fillna(final_merged_df['gc_country_raw'])
 
-        # --- 11. Create Final Ideology Score --- #
+        country_count = final_merged_df['country_final'].notna().sum()
+        log.info(f"Final dataset contains 'country_final' for {country_count} / {len(final_merged_df)} electors.")
+
+        # --- 9.3. Add Region Information --- #
+        data_dir = gc_raw_path.parent # Assuming gc_raw_path is like 'data/gc_raw.csv'
+        country_region_map_path = data_dir / REGION_MAP_FILENAME
+        country_region_map = {}
+        if country_region_map_path.exists():
+            try:
+                with open(country_region_map_path, 'r', encoding='utf-8') as f:
+                    country_region_map = json.load(f)
+                log.info(f"Loaded country to region map from {country_region_map_path}")
+            except json.JSONDecodeError as e:
+                log.error(f"Error decoding JSON from {country_region_map_path}: {e}. Region mapping will be skipped.")
+            except Exception as e:
+                log.error(f"Error loading country to region map from {country_region_map_path}: {e}. Region mapping will be skipped.")
+        else:
+            log.warning(f"Country to region map not found at {country_region_map_path}. 'region' column will use defaults.")
+
+        # Add region column based on country_final and the loaded map
+        if country_region_map:
+            final_merged_df['region'] = final_merged_df['country_final'].map(lambda x: country_region_map.get(x) if pd.notna(x) else pd.NA)
+            unmapped_countries = final_merged_df[final_merged_df['country_final'].notna() & final_merged_df['region'].isna()]['country_final'].unique()
+            if len(unmapped_countries) > 0:
+                log.warning(f"The following countries were not found in the region map and have no assigned region: {', '.join(unmapped_countries)}")
+            # Fill NA regions for unmapped countries or those with no country_final with 'Unknown_Region'
+            # If a country_final was NA, its region will also be NA from the map, then filled here.
+            final_merged_df['region'] = final_merged_df['region'].fillna("Unknown_Region")
+            log.info("Added 'region' column based on country mapping.")
+        else:
+            final_merged_df['region'] = "Unknown_Region"
+            log.info(f"Region map not loaded or empty. 'region' column set to 'Unknown_Region' for all records.")
+
+        # --- 10. Create Final Ideology Score --- #
         log.info("Creating final 'ideology_score' based on 'cs_total_score'.")
         if 'cs_total_score' in final_merged_df.columns:
             # Convert to numeric, coercing errors
@@ -381,15 +500,18 @@ def _process_and_merge_data(
             log.warning("'cs_total_score' column not found after merge. Cannot create 'ideology_score'. It will be missing.")
             final_merged_df['ideology_score'] = pd.NA # Explicitly add as NA
 
-        # --- 12. Final Column Selection and Save --- #
+        # --- 11. Final Column Selection and Save --- #
         final_cols = [
             'elector_id', 'gc_id', 'ch_id', 'cs_id',
             'name_clean', 'name_clean_ascii',
-            'dob', 'date_cardinal', 'country',        # Final coalesced country
+            'dob', 'date_cardinal', 'country_final',        # Final coalesced country
+            'region',        # NEW: Add region column
+            'is_papabile',                             # Ensure 'is_papabile' is here
             'ideology_score',                          # Derived from cs_total_score
             'cs_total_score',                          # Keep original score for reference
             # Optionally keep raw/intermediate fields for debugging:
-            # 'gc_name_raw', 'ch_name_raw', 'gc_country_raw', 'ch_country_extracted', 'cs_country', 'cs_name_raw'
+            # 'gc_name_raw', 'ch_name_raw', 'gc_country_raw', 'ch_country_extracted',
+            # 'cs_country_raw', 'is_papabile_from_name_cell_raw', 'cs_name_raw', 'cs_papabile_score'
         ]
 
         # Ensure all final columns exist, add NA if not
@@ -437,8 +559,6 @@ def main():
     cache_dir = data_dir / 'cache'
 
     # Setup logging (redundant if _process_and_merge_data does it, but safe)
-    log = setup_logging(level=logging.DEBUG)
-
     parser = argparse.ArgumentParser(description="Conclave elector data ingestion script.")
     parser.add_argument(
         "--force-gc-ch-match",
@@ -454,6 +574,12 @@ def main():
 
     force_llm_match = args.force_gc_ch_match
     force_conclavoscope_match = args.force_cs_match
+
+    log_level = logging.DEBUG
+    utils_log = setup_logging(level=log_level) # Ensure this sets root or relevant loggers
+
+    # Local logger for ingest.py
+    log = logging.getLogger(__name__)
 
     log.info(f"Running ingestion with output path: {merged_output_path}")
     log.info(f"Force GC-CH Match: {force_llm_match}")

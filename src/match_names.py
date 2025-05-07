@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any
 import logging
+import re
 
 # Initialize logging
 log = logging.getLogger(__name__)
@@ -174,81 +175,267 @@ def preprocess_catholic_hierarchy(df: pd.DataFrame) -> pd.DataFrame:
     return df_processed[required_cols]
 
 
-def format_list_for_prompt(data_list: List[Dict[str, Any]], prefix: str) -> List[str]:
-    """Formats a list of dictionaries into strings suitable for the LLM prompt.
+def _sanitize_value_for_fstring(value: Any) -> Any:
+    """Escapes curly braces in strings to be safely embedded in f-strings."""
+    if isinstance(value, str):
+        return value.replace("{", "{{").replace("}", "}}")
+    return value
 
-    Dynamically includes available keys from the preprocessed data.
+
+def format_list_for_prompt(data_list: List[Dict[str, Any]], id_key_in_dict: str) -> List[str]:
+    """Formats a list of dictionaries for inclusion in the LLM prompt.
 
     Args:
-        data_list: List of dictionaries (rows from preprocessed DataFrame).
-        prefix: 'gc' or 'ch', used to determine ID and primary name/description field.
+        data_list: The list of dictionaries to format (e.g., preprocessed GC or CH data).
+        id_key_in_dict: The key name in each dictionary that holds the ID.
 
     Returns:
-        A list of strings, each representing an item for the prompt.
+        A list of strings, where each string is a formatted line for the prompt.
     """
     formatted_lines = []
-    id_key = f"{prefix}_id"
-    primary_field = f"{prefix}_description" if prefix == "gc" else f"{prefix}_name"
-
     for item in data_list:
-        # Ensure required ID and primary field are present
-        if id_key not in item or primary_field not in item:
-            print("Warning: Skipping item due to missing required field (%s or %s): %s" % (id_key, primary_field, item), file=sys.stderr)
-            continue
-
-        line = f"{id_key}: {item[id_key]}, {primary_field.split('_')[1]}: {item[primary_field]}"
-        # Add other available fields dynamically
-        other_fields = [
-            f"{k.split('_')[1]}: {v}" for k, v in item.items()
-            if k != id_key and k != primary_field and pd.notna(v) # Exclude NAs
-        ]
-        if other_fields:
-            line += ", " + ", ".join(other_fields)
+        # Ensure essential keys exist to prevent KeyErrors
+        name_desc = item.get('name_desc', 'Name/Description N/A')
+        item_id = item.get(id_key_in_dict, 'ID N/A') # Use the dynamic id_key_in_dict
+        line = f"{item_id}: {name_desc}"
         formatted_lines.append(line)
     return formatted_lines
 
-def generate_matching_prompt(gc_list: List[Dict[str, Any]], ch_list: List[Dict[str, Any]]) -> str:
-    """Creates the prompt for the Gemini LLM to match names.
+def extract_json_from_llm_response(text: str, expected_id_key1: str, expected_id_key2: str) -> Optional[List[Dict[str, Any]]]:
+    """Parses the JSON string from the LLM response, robustly handling preambles."""
+    if not text:
+        log.error("Cannot parse LLM response: Input text is None or empty.")
+        return [] 
 
-    Args:
-        gc_list: Preprocessed GCatholic data as a list of dictionaries.
-        ch_list: Preprocessed Catholic Hierarchy data as a list of dictionaries.
+    log.debug("Attempting to parse LLM Response Snippet: %s", text[:300].strip() + "..." if len(text) > 300 else text.strip())
+    cleaned_text = text.strip()
+    json_str = "" 
 
-    Returns:
-        The complete prompt string for the LLM.
-    """
-    log.info("Generating LLM prompt...")
-    prompt_header = """
-You are an expert data analyst specializing in Catholic Church hierarchy. Your task is to match individuals between two lists of cardinals based on their names and potentially other provided details (like age or birthdate if available and consistent).
+    json_blocks = re.finditer(r"```json\s*([\s\S]*?)\s*```", cleaned_text, re.IGNORECASE)
+    parsed_successfully = False
+    validated_matches = []
+    for i, json_match in enumerate(json_blocks):
+        json_str = json_match.group(1).strip()
+        log.info(f"Found JSON block {i+1}. Attempting to parse.")
+        # Remove common preamble/postamble lines that might be mistakenly included by LLM inside the block
+        json_str_lines = json_str.split('\n')
+        cleaned_lines = []
+        in_json_structure = False
+        for line in json_str_lines:
+            stripped_line = line.strip()
+            if not in_json_structure:
+                if stripped_line.startswith('[') or stripped_line.startswith('{'):
+                    in_json_structure = True
+                    cleaned_lines.append(line) # Keep the line that starts the JSON
+            elif in_json_structure:
+                cleaned_lines.append(line)
+        
+        if not cleaned_lines:
+            log.warning(f"JSON block {i+1} was empty after basic cleaning.")
+            continue
 
-List 1 contains descriptions like: 'LastName, FirstName, Suffix.(Age)...Title...'
-List 2 contains names like: 'FirstName [MiddleName] CardinalLastName [Suffix]'
+        json_str_cleaned = '\n'.join(cleaned_lines)
 
-Please compare the two lists below and identify pairs of individuals who are likely the same person. Consider variations in name format, middle names/initials, titles (like C.SS.R., O.F.M.), and potential minor discrepancies in age or birthdate.
+        try:
+            # Attempt to parse the cleaned JSON string
+            parsed_llm_output = json.loads(json_str_cleaned)
+            log.debug(f"Successfully parsed JSON from block {i+1}.")
+            parsed_successfully = True # Mark that we found and parsed a block
+        except json.JSONDecodeError as e:
+            log.warning(f"Could not parse JSON from block {i+1}. Error: {e}. Snippet: {json_str_cleaned[:200]}...")
+            continue # Try next block
 
-Provide your matches **only** as a valid JSON list of dictionaries, where each dictionary represents a matched pair and has the keys 'gc_id' and 'ch_id' corresponding to the IDs provided in the input lists. Do not include any text before or after the JSON list. Ensure the JSON is perfectly formatted.
+        if not isinstance(parsed_llm_output, list):
+            log.warning(f"Parsed JSON from block {i+1} is not a list, but type {type(parsed_llm_output)}. Skipping.")
+            continue
 
-Example Output Format:
-[{"gc_id": 10, "ch_id": 5}, {"gc_id": 25, "ch_id": 112}]
+        if not parsed_llm_output: # Empty list
+            log.warning(f"Parsed JSON list from block {i+1} is empty. Skipping.")
+            continue
 
-If you are uncertain about a match, do not include it. Only include high-confidence matches.
+        # If we got here, this block parsed into a non-empty list. Proceed with validation.
+        log.info(f"Successfully parsed JSON from block {i+1} into a list of {len(parsed_llm_output)} items. Validating items...")
+        for item_idx, item in enumerate(parsed_llm_output):
+            log.debug(f"Processing item {item_idx} from block {i+1}: {item}")
+            if not (isinstance(item, dict) and expected_id_key1 in item and expected_id_key2 in item):
+                log.warning(f"Skipping item {item_idx} due to unexpected structure or missing keys: {item}")
+                continue 
+            
+            try:
+                id1_val = item[expected_id_key1]
+                id2_val = item[expected_id_key2]
+                log.debug(f"  Item {item_idx}: id1_val='{id1_val}' (type: {type(id1_val)}), id2_val='{id2_val}' (type: {type(id2_val)})")
+                
+                str_id1 = str(id1_val).strip()
+                str_id2 = str(id2_val).strip()
+                log.debug(f"  Item {item_idx}: str_id1='{str_id1}', str_id2='{str_id2}'")
 
---- List 1 ---
-"""
-    gc_prompt_lines = format_list_for_prompt(gc_list, "gc")
-    ch_prompt_lines = format_list_for_prompt(ch_list, "ch")
+                # Validation checks
+                check_str_id1_non_empty = bool(str_id1)
+                check_str_id2_non_empty = bool(str_id2)
+                check_str_id1_chars = all(c in '0123456789-' for c in str_id1.lstrip('-')) if str_id1 else False
+                check_str_id2_chars = all(c in '0123456789-' for c in str_id2.lstrip('-')) if str_id2 else False
+                check_str_id1_hyphens = str_id1.count('-') <= 1
+                check_str_id2_hyphens = str_id2.count('-') <= 1
+                check_str_id1_leading_zeros = (str_id1 == '0' or not str_id1.startswith('0') or str_id1.startswith('-0'))
+                check_str_id2_leading_zeros = (str_id2 == '0' or not str_id2.startswith('0') or str_id2.startswith('-0'))
 
-    prompt = (
-        prompt_header +
-        "\n".join(gc_prompt_lines) +
-        "\n\n--- List 2 ---\n" +
-        "\n".join(ch_prompt_lines) +
-        "\n\n--- Matched Pairs (JSON List Only) ---\n[" # Prime the LLM for JSON list output
-    )
-    print(f"Prompt generated. Length: {len(prompt)} characters.")
-    return prompt
+                log.debug(f"  Item {item_idx} Validations: non_empty1={check_str_id1_non_empty}, non_empty2={check_str_id2_non_empty}, "
+                          f"chars1={check_str_id1_chars}, chars2={check_str_id2_chars}, "
+                          f"hyphens1={check_str_id1_hyphens}, hyphens2={check_str_id2_hyphens}, "
+                          f"leading_zeros1={check_str_id1_leading_zeros}, leading_zeros2={check_str_id2_leading_zeros}")
 
-def call_gemini_api(prompt: str, model_name: str = GEMINI_MODEL_NAME) -> Optional[str]:
+                if not (check_str_id1_non_empty and check_str_id2_non_empty and \
+                        check_str_id1_chars and check_str_id2_chars and \
+                        check_str_id1_hyphens and check_str_id2_hyphens and \
+                        check_str_id1_leading_zeros and check_str_id2_leading_zeros
+                       ) :
+                    log.warning(f"Skipping item {item_idx} due to invalid ID format: id1='{str_id1}', id2='{str_id2}'")
+                    continue
+
+                item[expected_id_key1] = int(str_id1)
+                item[expected_id_key2] = int(str_id2)
+                validated_matches.append(item)
+                log.debug(f"  Item {item_idx} successfully validated and added.")
+            except ValueError as ve:
+                log.warning(f"Skipping item {item_idx} due to ValueError during ID conversion (id1='{str_id1}', id2='{str_id2}'): {ve}")
+                continue
+            except Exception as e:
+                log.error(f"Skipping item {item_idx} due to unexpected error: {e}. Item data: {item}")
+                continue
+        
+        if validated_matches: # If this block yielded any valid matches, we are done.
+            log.info(f"Finished processing block {i+1}. Found {len(validated_matches)} validated matches.")
+            break # Exit the loop over json_blocks
+        else:
+            log.warning(f"Block {i+1} parsed correctly but yielded no validated matches after item-level validation.")
+            # Continue to the next block if any
+
+    if not parsed_successfully and not validated_matches:
+        # Fallback 1: If no ```json ``` block worked, try to parse the whole response as JSON (if it's very simple)
+        log.info("No valid JSON found in ```json ... ``` blocks, or blocks yielded no valid items. Attempting fallback 1: parse entire response if it's a simple JSON list.")
+        if len(cleaned_text.strip()) > 0 and (cleaned_text.strip().startswith('[') and cleaned_text.strip().endswith(']')):
+            try:
+                parsed_llm_output = json.loads(cleaned_text.strip()) # Try parsing the whole thing
+                if isinstance(parsed_llm_output, list) and parsed_llm_output:
+                    log.info(f"Fallback 1: Successfully parsed entire response as a JSON list of {len(parsed_llm_output)} items. Validating items...")
+                    for item_idx, item in enumerate(parsed_llm_output):
+                        is_valid_item, id1_val_str, id2_val_str = _validate_llm_item(item, item_idx, expected_id_key1, expected_id_key2, "fallback1_block")
+                        if is_valid_item:
+                            validated_matches.append({expected_id_key1: id1_val_str, expected_id_key2: id2_val_str})
+                    if validated_matches:
+                        log.info(f"Fallback 1 yielded {len(validated_matches)} validated matches.")
+                        # No break here, as we want to prefer ```json``` blocks if they ever work.
+                        # This path is taken only if validated_matches is still empty.
+                else:
+                    log.warning("Fallback 1: Entire response parsed but was not a non-empty list.")
+            except json.JSONDecodeError as e:
+                log.warning(f"Fallback 1: Could not parse entire response as JSON. Error: {e}")
+        else:
+            log.info("Fallback 1: Entire response does not appear to be a simple JSON list, skipping.")
+
+    # Fallback 2: If still no matches, try to find a bare JSON list pattern (more robust than Fallback 1)
+    if not validated_matches: # Check again, Fallback 1 might have populated it
+        log.info("Still no validated matches. Attempting Fallback 2: find bare JSON list pattern.")
+        # This regex looks for a pattern starting with '[', containing at least one '{...}', and ending with ']'
+        # It captures the outermost list.
+        bare_json_regex = r"(\[\s*(?:\{[\s\S]*?\}\s*,\s*)*\{[\s\S]*?\}\s*\])"
+        bare_json_finds = list(re.finditer(bare_json_regex, cleaned_text))
+        
+        if bare_json_finds:
+            # Take the last found bare JSON array, as LLMs often put preamble first.
+            json_str_candidate = bare_json_finds[-1].group(1)
+            candidate_snippet_for_log = json_str_candidate[:150].replace('\n', ' ')
+            log.info(f"Fallback 2: Found potential bare JSON list. Attempting to parse candidate: {candidate_snippet_for_log}...")
+            try:
+                parsed_llm_output = json.loads(json_str_candidate)
+                if isinstance(parsed_llm_output, list) and parsed_llm_output:
+                    log.info(f"Fallback 2: Successfully parsed bare JSON candidate into a list of {len(parsed_llm_output)} items. Validating items...")
+                    for item_idx, item in enumerate(parsed_llm_output):
+                        is_valid_item, id1_val_str, id2_val_str = _validate_llm_item(item, item_idx, expected_id_key1, expected_id_key2, "fallback2_block")
+                        if is_valid_item:
+                            validated_matches.append({expected_id_key1: id1_val_str, expected_id_key2: id2_val_str})
+                    if validated_matches:
+                         log.info(f"Fallback 2 yielded {len(validated_matches)} validated matches.")
+                else:
+                    log.warning("Fallback 2: Bare JSON candidate parsed but was not a non-empty list.")
+            except json.JSONDecodeError as e:
+                log.warning(f"Fallback 2: Could not parse bare JSON candidate. Error: {e}. Candidate snippet: {json_str_candidate[:200]}...")
+        else:
+            log.warning("Fallback 2: Could not find any bare JSON list pattern in the response.")
+
+    if not validated_matches:
+        log.warning("LLM returned an empty list of matches or parsing failed for all attempts (including fallbacks).")
+        # AI: Adding more context to the log when no matches are found
+        log.debug(f"Full raw LLM output when no matches found:\n{cleaned_text}")
+
+    return validated_matches
+
+
+def _validate_llm_item(item: Any, item_idx: int, id1_key: str, id2_key: str, block_info: str) -> tuple[bool, str | None, str | None]:
+    """Validates a single item from the parsed LLM JSON output."""
+    log.debug(f"Processing item {item_idx} from {block_info}: {item}")
+    if not isinstance(item, dict):
+        log.warning(f"  Item {item_idx} from {block_info} is not a dictionary. Skipping.")
+        return False, None, None
+
+    id1_val = item.get(id1_key)
+    id2_val = item.get(id2_key)
+
+    log.debug(f"  Item {item_idx} from {block_info}: id1_val='{id1_val}' (type: {type(id1_val)}), id2_val='{id2_val}' (type: {type(id2_val)})")
+
+    # Convert IDs to string and perform basic validation
+    try:
+        # Allow integers or strings that can be cast to string
+        str_id1 = str(id1_val) if id1_val is not None else ""
+        str_id2 = str(id2_val) if id2_val is not None else ""
+    except Exception as e:
+        log.warning(f"  Item {item_idx} from {block_info}: Error converting IDs to string ('{id1_val}', '{id2_val}'): {e}. Skipping.")
+        return False, None, None
+    
+    log.debug(f"  Item {item_idx} from {block_info}: str_id1='{str_id1}', str_id2='{str_id2}'")
+
+    # Validation checks (as originally designed)
+    non_empty1 = bool(str_id1)
+    non_empty2 = bool(str_id2)
+    # Allow only digits, hyphens, or specific alphanumeric patterns if necessary in future
+    # For now, simple digit check for basic numeric IDs from range(), but allow general strings
+    # As Conclavoscope IDs are numeric (0-indexed) and elector_id are also numeric
+    chars1 = str_id1.isalnum() or all(c.isdigit() or c == '-' for c in str_id1) if str_id1 else False 
+    chars2 = str_id2.isalnum() or all(c.isdigit() or c == '-' for c in str_id2) if str_id2 else False
+    # Max length check (e.g., up to 10 chars, adjust if IDs can be longer)
+    len1 = len(str_id1) <= 10
+    len2 = len(str_id2) <= 10
+    # Check for disallowed characters or patterns (e.g. leading/trailing hyphens if problematic)
+    hyphens1 = not (str_id1.startswith('-') or str_id1.endswith('-')) if '-' in str_id1 else True
+    hyphens2 = not (str_id2.startswith('-') or str_id2.endswith('-')) if '-' in str_id2 else True
+    # Check for leading zeros if IDs are purely numeric and this is significant (e.g. '01' vs '1')
+    # For now, assume string comparison handles this, but can be more specific:
+    leading_zeros1 = not (str_id1.startswith('0') and len(str_id1) > 1 and str_id1.isdigit()) if str_id1 else True
+    leading_zeros2 = not (str_id2.startswith('0') and len(str_id2) > 1 and str_id2.isdigit()) if str_id2 else True
+
+    all_validations = {
+        "non_empty1": non_empty1,
+        "non_empty2": non_empty2,
+        "chars1": chars1,
+        "chars2": chars2,
+        "len1": len1,
+        "len2": len2,
+        "hyphens1": hyphens1,
+        "hyphens2": hyphens2,
+        "leading_zeros1": leading_zeros1,
+        "leading_zeros2": leading_zeros2
+    }
+    log.debug(f"  Item {item_idx} from {block_info} Validations: {all_validations}")
+
+    if all(all_validations.values()):
+        return True, str_id1, str_id2
+    else:
+        failed_checks = {k:v for k,v in all_validations.items() if not v}
+        log.warning(f"  Item {item_idx} from {block_info} failed validation checks: {failed_checks}. Values: id1='{str_id1}', id2='{str_id2}'. Skipping.")
+        return False, None, None
+
+def call_gemini_api(prompt: str, model_name: str = GEMINI_MODEL_NAME, expected_id_key1: str = "gc_id", expected_id_key2: str = "ch_id") -> Optional[List[Dict[str, Any]]]:
     """Sends the prompt to the Gemini model and returns the text response.
 
     Handles potential API errors and provides limited response info on failure.
@@ -256,6 +443,8 @@ def call_gemini_api(prompt: str, model_name: str = GEMINI_MODEL_NAME) -> Optiona
     Args:
         prompt: The prompt string to send to the LLM.
         model_name: The name of the Gemini model to use.
+        expected_id_key1: The expected key for the first ID in the JSON response.
+        expected_id_key2: The expected key for the second ID in the JSON response.
 
     Returns:
         The text content of the LLM response, or None if an error occurs.
@@ -277,113 +466,138 @@ def call_gemini_api(prompt: str, model_name: str = GEMINI_MODEL_NAME) -> Optiona
 
         # Check for safety ratings or blocked content *before* accessing .text
         if response.prompt_feedback.block_reason:
-            print("Warning: Prompt was blocked. Reason: %s" % response.prompt_feedback.block_reason, file=sys.stderr)
+            print("Warning: Prompt was blocked. Reason:", response.prompt_feedback.block_reason, file=sys.stderr)
             return None
         if not response.candidates:
              print("Warning: No candidates returned by the API.", file=sys.stderr)
              return None
-        if response.candidates[0].finish_reason != 'STOP':
-            print("Warning: Generation finished unexpectedly. Reason: %s" % response.candidates[0].finish_reason, file=sys.stderr)
-            # Still attempt to get text if available
-            if response.candidates[0].content and response.candidates[0].content.parts:
-                 print("Attempting to extract partial text...")
-                 return response.candidates[0].text # Use .text for safer access
-            else:
-                 return None
 
-        print("Received response from Gemini.")
-        # Use .text attribute for safer access to the response string
-        return response.text
+        actual_finish_reason = response.candidates[0].finish_reason
+        
+        # Dynamically get the FinishReason enum type from an instance
+        FinishReasonEnum = type(actual_finish_reason)
+        expected_stop_reason = FinishReasonEnum.STOP
+
+        if actual_finish_reason != expected_stop_reason:
+            print(f"Warning: Generation did not finish with STOP. Reason: {actual_finish_reason.name if hasattr(actual_finish_reason, 'name') else actual_finish_reason}", file=sys.stderr)
+            # Try to extract text even if finish reason is not STOP, parts might exist
+            if response.candidates[0].content and response.candidates[0].content.parts:
+                print("Attempting to extract partial text...")
+                try:
+                    # Concatenate text from all parts that have a text attribute
+                    extracted_text = "".join(part.text for part in response.candidates[0].content.parts if hasattr(part, 'text'))
+                    if extracted_text:
+                        return extracted_text
+                    else:
+                        print("No text found in content parts despite unexpected finish reason.", file=sys.stderr)
+                        return None
+                except Exception as e_text_extract:
+                    print(f"Error extracting partial text: {e_text_extract}", file=sys.stderr)
+                    return None
+            else:
+                print("No content or parts available for unexpected finish reason.", file=sys.stderr)
+                return None
+
+        print(f"Received response from Gemini (finish reason: {actual_finish_reason.name if hasattr(actual_finish_reason, 'name') else actual_finish_reason}).")
+        # If finish_reason is STOP (or if we fell through), use response.text for robust text extraction.
+        # The response.text property will raise ValueError if text can't be extracted.
+        raw_llm_output = response.text
+
+        parsed_matches = extract_json_from_llm_response(raw_llm_output, expected_id_key1, expected_id_key2)
+
+        if parsed_matches is not None: # Check for None first (parsing didn't fail outright)
+            print(f"Successfully parsed {len(parsed_matches)} matches from LLM response.")
+            if not parsed_matches: # If it's an empty list
+                # AI: Log full raw output if an empty list is parsed, to diagnose prompt/model behavior
+                print(f"LLM returned an empty list of matches. Full raw LLM output:\n{raw_llm_output}", file=sys.stderr)
+            return parsed_matches
+        else: # parsed_matches is None (parsing failed)
+            print("LLM response parsing failed or yielded no matches (parser returned None).", file=sys.stderr)
+            print(f"Full raw LLM output on parsing failure (parser returned None):\n{raw_llm_output}", file=sys.stderr)
+            return None
 
     except AttributeError as ae:
-         print("Error: Potentially invalid response structure from API: %s" % ae, file=sys.stderr)
+         print("Error: Potentially invalid response structure from API:", ae, file=sys.stderr)
          # Log the raw response if possible without causing further errors
          try:
-            print("Raw response object type: %s" % type(response), file=sys.stderr)
+            print("Raw response object type:", type(response), file=sys.stderr)
             # print(f"Raw response content: {response}", file=sys.stderr) # Avoid printing potentially huge objects
          except Exception as log_e:
-             print("Could not log raw response details: %s" % log_e, file=sys.stderr)
+             print("Could not log raw response details:", log_e, file=sys.stderr)
          return None
     except Exception as e:
-        print("Error interacting with Gemini API: %s" % e, file=sys.stderr)
+        print("Error interacting with Gemini API:", e, file=sys.stderr)
         # Attempt to log more details if available in the exception
         if hasattr(e, 'response'):
-            print("API Error Response: %s" % e.response, file=sys.stderr)
-        return None
+            print("API Error Response:", e.response, file=sys.stderr)
+        raise # Changed from: return None
 
-
-def parse_llm_response(response_text: Optional[str]) -> List[Dict[str, int]]:
-    """Parses the JSON string from the LLM response.
-
-    Args:
-        response_text: The text content returned by the Gemini API call.
-
-    Returns:
-        A list of matched dictionaries (e.g., [{'gc_id': 10, 'ch_id': 5}]),
-        or an empty list if parsing fails or input is None.
-    """
-    if not response_text:
-        print("Cannot parse LLM response: Input text is None or empty.", file=sys.stderr)
-        return []
-
-    print("Parsing LLM Response Snippet: %s..." % response_text[:200].strip())
-    cleaned_text = response_text.strip()
-
-    # Attempt to find JSON list within potential markdown/text
-    json_start = cleaned_text.find('[')
-    json_end = cleaned_text.rfind(']') + 1
-
-    if json_start != -1 and json_end != 0:
-        json_str = cleaned_text[json_start:json_end]
-        try:
-            matches = json.loads(json_str)
-            # Validate structure
-            if isinstance(matches, list) and all(isinstance(item, dict) and 'gc_id' in item and 'ch_id' in item for item in matches):
-                print(f"Successfully parsed {len(matches)} matches from LLM response.")
-                # Additional check for correct types (integers)
-                valid_matches = []
-                for item in matches:
-                    try:
-                        valid_matches.append({'gc_id': int(item['gc_id']), 'ch_id': int(item['ch_id'])})
-                    except (ValueError, TypeError):
-                         print("Warning: Skipping match with non-integer IDs: %s" % item, file=sys.stderr)
-                return valid_matches
-            else:
-                print("Error: Parsed JSON from LLM response was not in the expected format (list of dicts with 'gc_id', 'ch_id').", file=sys.stderr)
-                print("Parsed JSON structure: %s" % type(matches), file=sys.stderr)
-                # print(f"Problematic JSON String: {json_str}", file=sys.stderr) # Debugging
-                return []
-        except json.JSONDecodeError as e:
-            print("Error decoding JSON from LLM response: %s" % e, file=sys.stderr)
-            print("Attempted to parse: %s" % json_str, file=sys.stderr) # Log the substring tried
-            return []
-    else:
-        print("Error: Could not find valid JSON list structure '[]' in LLM response.", file=sys.stderr)
-        print("Full Response Text: %s" % cleaned_text, file=sys.stderr)
-        return []
-
-
-def save_matches(matches: List[Dict[str, int]], output_path: Path) -> bool:
-    """Saves the list of matched dictionaries to a JSON file.
+def generate_matching_prompt(gc_list: List[Dict[str, Any]], ch_list: List[Dict[str, Any]], id1_key: str = "gc_id", id2_key: str = "ch_id") -> str:
+    """Creates the prompt for the Gemini LLM to match names.
 
     Args:
-        matches: The list of matched dictionaries.
-        output_path: The Path object for the output JSON file.
+        gc_list: Preprocessed GCatholic data as a list of dictionaries.
+        ch_list: Preprocessed Catholic Hierarchy data as a list of dictionaries.
+        id1_key: The key name for IDs from the first list (gc_list) to be used in the prompt output rules.
+        id2_key: The key name for IDs from the second list (ch_list) to be used in the prompt output rules.
 
     Returns:
-        True if saving was successful, False otherwise.
+        The complete prompt string for the LLM.
     """
-    try:
-        with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(matches, f, indent=4)
-        log.info(f"Successfully saved {len(matches)} matches to {output_path}")
-        return True
-    except IOError as e:
-        log.error("Error saving matches to %s: %s", output_path, e, exc_info=True)
-        return False
-    except Exception as e:
-        log.error("Unexpected error saving matches: %s", e, exc_info=True)
-        return False
+    log.info("Generating LLM prompt...")
+    # AI: Updated prompt_header to use f-string and dynamic id1_key, id2_key. Note {{}} for literal curly braces in f-string.
+    prompt_header = f"""
+You are an expert data analyst specializing in Catholic Church hierarchy. Your task is to match individuals between two lists of cardinals based on their names and potentially other provided details (like age or birthdate if available and consistent).
+
+List 1 contains descriptions like: 'LastName, FirstName, Suffix.(Age)...Title...'
+List 2 contains names like: 'FirstName [MiddleName] CardinalLastName [Suffix]'
+
+Please compare the two lists below and identify pairs of individuals who are likely the same person. Consider variations in name format, middle names/initials, titles (like C.SS.R., O.F.M.), and potential minor discrepancies in age or birthdate.
+
+Provide your matches **only** as a valid JSON list of dictionaries, where each dictionary represents a matched pair and has the keys '{id1_key}' and '{id2_key}' corresponding to the IDs provided in the input lists. Do not include any text before or after the JSON list. Ensure the JSON is perfectly formatted.
+
+Example Output Format:
+[{{{{"{id1_key}": 10, "{id2_key}": 5}}}}, {{{{"{id1_key}": 25, "{id2_key}": 112}}}}] 
+
+If you are uncertain about a match, do not include it. Only include high-confidence matches.
+
+--- List 1 ---
+"""
+    # AI: Pass the dynamic id keys to format_list_for_prompt
+    gc_prompt_lines = format_list_for_prompt(gc_list, id1_key)
+    ch_prompt_lines = format_list_for_prompt(ch_list, id2_key)
+
+    prompt = (
+        prompt_header +
+        "\n".join(gc_prompt_lines) +
+        "\n\n--- List 2 ---\n" +
+        "\n".join(ch_prompt_lines) +
+        "\n\n--- Matched Pairs (JSON List Only) ---\n[" # Prime the LLM for JSON list output
+    )
+    print(f"Prompt generated. Length: {len(prompt)} characters.")
+    return prompt
+
+def prepare_dataframe_for_prompt(
+    df: pd.DataFrame,
+    name_col: str,
+    id_col_original_name: str,
+    id_col_for_prompt: str
+) -> List[Dict[str, Any]]:
+    """Prepares a DataFrame for prompt generation by creating a list of dictionaries.
+    Each dictionary contains the original ID (with its key set to id_col_for_prompt) 
+    and a name/description field.
+    """
+    output_list = []
+    for _, row in df.iterrows():
+        name_desc_val = str(row[name_col]) # Make sure it's a string
+        # Ensure the ID is taken from its original column
+        id_val = row[id_col_original_name]
+        # The key for the ID in the output dictionary is id_col_for_prompt
+        output_list.append({
+            id_col_for_prompt: id_val, 
+            'name_desc': name_desc_val # Generic key for name/description
+        })
+    return output_list
 
 def match_datasets_llm(
     df1: pd.DataFrame,
@@ -392,112 +606,69 @@ def match_datasets_llm(
     df2: pd.DataFrame,
     df2_name_col: str,
     df2_id_col: str,
-    output_path: Path,
+    output_path: Path, # Added output_path for consistency, though not directly used by LLM part here
     dataset1_label: str,
     dataset2_label: str,
 ) -> List[Dict[str, Any]]:
-    """Performs LLM-based matching between two generic DataFrames.
+    """Matches records between two DataFrames using an LLM.
 
     Args:
         df1: First DataFrame.
-        df1_name_col: Name of the column in df1 containing names/descriptions for matching.
-        df1_id_col: Name of the column in df1 containing unique IDs.
+        df1_name_col: Name column in df1.
+        df1_id_col: ID column in df1.
         df2: Second DataFrame.
-        df2_name_col: Name of the column in df2 containing names/descriptions for matching.
-        df2_id_col: Name of the column in df2 containing unique IDs.
-        output_path: Path to save the JSON file with matched pairs.
-        dataset1_label: Label for the first dataset (e.g., "Electors").
-        dataset2_label: Label for the second dataset (e.g., "Conclavoscope").
+        df2_name_col: Name column in df2.
+        df2_id_col: ID column in df2.
+        output_path: Path to save matched pairs (used by calling functions, not directly here).
+        dataset1_label: Label for the first dataset (e.g., 'GCatholic').
+        dataset2_label: Label for the second dataset (e.g., 'Catholic Hierarchy').
 
     Returns:
         A list of dictionaries, where each dictionary represents a matched pair
-        with original ID column names as keys.
-        Example: [{df1_id_col: id_val1, df2_id_col: id_val2}, ...]
+        with keys corresponding to df1_id_col and df2_id_col.
     """
-    log.info(f"Starting LLM matching between '{dataset1_label}' and '{dataset2_label}'.")
+    log.info(f"Starting LLM matching for {dataset1_label} ({df1_id_col}) and {dataset2_label} ({df2_id_col}).")
+    log.info(f"Dataset 1 ({dataset1_label}) has {len(df1)} records. Name col: {df1_name_col}, ID col: {df1_id_col}")
+    log.info(f"Dataset 2 ({dataset2_label}) has {len(df2)} records. Name col: {df2_name_col}, ID col: {df2_id_col}")
 
-    # Prepare df1 to look like 'GCatholic' data for generate_matching_prompt
-    # The format_list_for_prompt expects 'gc_id' and 'gc_description'
-    df1_for_prompt = pd.DataFrame({
-        'gc_id': df1[df1_id_col],
-        'gc_description': df1[df1_name_col]
-    })
-    # Add any other columns from df1 that format_list_for_prompt might use implicitly
-    # by iterating over item.keys() beyond 'gc_id' and 'gc_description'.
-    # For safety, copy all other columns, prepending 'gc_' to avoid clashes if not already prefixed.
-    for col in df1.columns:
-        if col not in [df1_id_col, df1_name_col]:
-            df1_for_prompt[f'gc_{col}'] = df1[col]
+    # Select relevant columns and handle potential missing columns gracefully
+    df1_cols_to_select = [df1_name_col, df1_id_col] + [col for col in ['Age', 'BirthDate'] if col in df1.columns]
+    df1_subset = df1[df1_cols_to_select].copy()
+    df2_cols_to_select = [df2_name_col, df2_id_col] + [col for col in ['Age', 'BirthDate'] if col in df2.columns]
+    df2_subset = df2[df2_cols_to_select].copy()
 
-    df1_list_for_prompt = df1_for_prompt.to_dict(orient='records')
+    # AI: Use prepare_dataframe_for_prompt, passing dfX_id_col as the id_col_for_prompt.
+    # This ensures the dictionaries in dfX_prompt_data use dfX_id_col as their ID key.
+    df1_prompt_data = prepare_dataframe_for_prompt(df1_subset, df1_name_col, df1_id_col, df1_id_col)
+    df2_prompt_data = prepare_dataframe_for_prompt(df2_subset, df2_name_col, df2_id_col, df2_id_col)
 
-    # Prepare df2 to look like 'Catholic Hierarchy' data for generate_matching_prompt
-    # The format_list_for_prompt expects 'ch_id' and 'ch_name'
-    df2_for_prompt = pd.DataFrame({
-        'ch_id': df2[df2_id_col],
-        'ch_name': df2[df2_name_col]
-    })
-    for col in df2.columns:
-        if col not in [df2_id_col, df2_name_col]:
-            df2_for_prompt[f'ch_{col}'] = df2[col]
+    # AI: Call generate_matching_prompt with id1_key=df1_id_col and id2_key=df2_id_col.
+    # This tells generate_matching_prompt to instruct the LLM to use these keys in the JSON output,
+    # and format_list_for_prompt (called by generate_matching_prompt) will use these keys to read from dfX_prompt_data.
+    prompt = generate_matching_prompt(df1_prompt_data, df2_prompt_data, id1_key=df1_id_col, id2_key=df2_id_col)
 
-    df2_list_for_prompt = df2_for_prompt.to_dict(orient='records')
+    # AI: Call call_gemini_api with expected_id_key1=df1_id_col and expected_id_key2=df2_id_col.
+    # This ensures extract_json_from_llm_response (called by call_gemini_api) validates against these dynamic keys.
+    raw_response_matches = call_gemini_api(prompt, GEMINI_MODEL_NAME, expected_id_key1=df1_id_col, expected_id_key2=df2_id_col)
 
-    # Generate prompt using the adapted data lists and provided labels
-    prompt_intro = f"""  # Use f-string for labels, but fixed keys for LLM response
-You are an expert data analyst specializing in Catholic Church hierarchy. Your task is to match individuals between two lists of cardinals based on their names and potentially other provided details (like age or birthdate if available and consistent).
-
-List 1 ({dataset1_label}) contains descriptions like: 'LastName, FirstName, Suffix.(Age)...Title...'
-List 2 ({dataset2_label}) contains names like: 'FirstName [MiddleName] CardinalLastName [Suffix]'
-
-Please compare the two lists below and identify pairs of individuals who are likely the same person. Consider variations in name format, middle names/initials, titles (like C.SS.R., O.F.M.), and potential minor discrepancies in age or birthdate.
-
-Return your response as a JSON list of dictionaries, where each dictionary contains two keys: 'gc_id' (referring to the ID from List 1 ({dataset1_label})) and 'ch_id' (referring to the ID from List 2 ({dataset2_label})), with their corresponding integer IDs.
-Example: [{"gc_id": 1, "ch_id": 101}, {"gc_id": 2, "ch_id": 102}]
-
-If you are uncertain about a match, do not include it. Only include high-confidence matches.
-"""
-    # Use 'gc' and 'ch' prefixes as format_list_for_prompt expects them
-    # The dfX_for_prompt DataFrames already have 'gc_id'/'gc_description' and 'ch_id'/'ch_name'
-    list1_prompt_lines = format_list_for_prompt(df1_list_for_prompt, "gc") 
-    list2_prompt_lines = format_list_for_prompt(df2_list_for_prompt, "ch")
-
-    prompt = (
-        prompt_intro +
-        f"\n\n--- List 1 ({dataset1_label}) ---\n" +
-        "\n".join(list1_prompt_lines) +
-        f"\n\n--- List 2 ({dataset2_label}) ---\n" +
-        "\n".join(list2_prompt_lines) +
-        "\n\n--- Matched Pairs (JSON List Only) ---\n[" # Prime for JSON
-    )
-
-    response_text = call_gemini_api(prompt)
-    if not response_text:
-        log.error("LLM API call failed or returned no response. Cannot proceed with matching.")
+    if raw_response_matches is None:
+        log.warning(f"LLM call returned None for {dataset1_label} and {dataset2_label}. Returning empty list.")
         return []
 
-    # Parse response - parse_llm_response expects keys 'gc_id' and 'ch_id'
-    raw_matches = parse_llm_response(response_text)
-    if not raw_matches:
-        log.warning("LLM response parsing failed or yielded no matches.")
-        return []
-
-    # Translate matched IDs back to original column names
-    translated_matches = []
-    for match in raw_matches:
-        if 'gc_id' in match and 'ch_id' in match:
-            translated_matches.append({
-                df1_id_col: match['gc_id'],
-                df2_id_col: match['ch_id']
-            })
-        else:
-            log.warning(f"Skipping malformed match from LLM: {match}")
-
-    if not save_matches(translated_matches, output_path):
-        log.warning(f"Failed to save matches to {output_path}. Returning matches directly.")
+    log.info(f"Successfully received {len(raw_response_matches)} matches from LLM for {dataset1_label} vs {dataset2_label}.")
     
-    log.info(f"Successfully matched {len(translated_matches)} pairs.")
-    return translated_matches
+    # Validate that the IDs are integers and keys match dfX_id_col
+    validated_matches = []
+    for match in raw_response_matches:
+        try:
+            id1_val = int(match[df1_id_col])
+            id2_val = int(match[df2_id_col])
+            validated_matches.append({df1_id_col: id1_val, df2_id_col: id2_val})
+        except (ValueError, KeyError, TypeError) as e:
+            log.error(f"Skipping invalid match: {match}. Error: {e}")
+            continue
+
+    return validated_matches
 
 # --- Main Execution ---
 def main():
@@ -532,7 +703,7 @@ def main():
         print(f"\nAttempting LLM call ({attempt + 1}/{MAX_LLM_RETRIES})...")
         response_text = call_gemini_api(prompt)
         if response_text:
-            matches = parse_llm_response(response_text)
+            matches = extract_json_from_llm_response(response_text, "gc_id", "ch_id")
             if matches:  # If we got a non-empty list of valid matches, break
                 break
             else:
@@ -632,7 +803,7 @@ if __name__ == "__main__":
             print(f"\nAttempting LLM call ({attempt + 1}/{MAX_LLM_RETRIES})...")
             response_text = call_gemini_api(prompt)
             if response_text:
-                matches = parse_llm_response(response_text)
+                matches = extract_json_from_llm_response(response_text, "gc_id", "ch_id")
                 if matches:  # If we got a non-empty list of valid matches, break
                     break
                 else:
