@@ -1,0 +1,30 @@
+{
+    "total_simulations": 250,
+    "successful_simulations": 25,
+    "success_rate": 0.1,
+    "average_rounds_successful": 58.96,
+    "min_rounds_successful": 51,
+    "max_rounds_successful": 100,
+    "median_rounds_successful": 51.0,
+    "winner_counts": {
+        "79": 4,
+        "58": 4,
+        "56": 3,
+        "63": 2,
+        "105": 2,
+        "47": 1,
+        "65": 1,
+        "54": 1,
+        "121": 1,
+        "87": 1,
+        "70": 1,
+        "1": 1,
+        "102": 1,
+        "96": 1,
+        "36": 1
+    },
+    "most_frequent_winner": "79",
+    "most_frequent_winner_count": 4,
+    "most_frequent_winner_percentage": 0.016,
+    "average_rounds_all": 95.896
+}
