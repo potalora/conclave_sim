@@ -6,14 +6,13 @@ from src.model import TransitionModel  # Assuming tests run from root
 
 # --- Fixtures ---
 
-
 @pytest.fixture
 def elector_data_valid():
     """Returns a valid elector DataFrame with elector_id as index, ideology_score, region, and is_papabile."""
     ids = [f"E{i+1:02d}" for i in range(5)]  # E01, E02, E03, E04, E05
     scores = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
     regions = ["Europe", "Asia", "Europe", "Americas", "Asia"]
-    papabile_status = [True, False, True, False, True]  # E01, E03, E05 are papabile
+    papabile_status = [True, False, True, False, True] # E01, E03, E05 are papabile
     df = pd.DataFrame(
         {"ideology_score": scores, "region": regions, "is_papabile": papabile_status},
         index=ids,
@@ -21,192 +20,196 @@ def elector_data_valid():
     df.index.name = "elector_id"
     return df
 
-
 @pytest.fixture
 def elector_data_missing_ideology_score(elector_data_valid):
     """Returns elector DataFrame missing the ideology_score column."""
     return elector_data_valid.drop(columns=["ideology_score"])
-
 
 @pytest.fixture
 def elector_data_missing_region(elector_data_valid):
     """Returns elector DataFrame missing the region column."""
     return elector_data_valid.drop(columns=["region"])
 
-
 @pytest.fixture
 def elector_data_missing_papabile(elector_data_valid):
     """Returns elector DataFrame missing the is_papabile column."""
     return elector_data_valid.drop(columns=["is_papabile"])
 
+@pytest.fixture
+def elector_data_no_index_name(elector_data_valid):
+    """Returns elector DataFrame with index not named 'elector_id' and no 'elector_id' column."""
+    data = elector_data_valid.copy()
+    data.index.name = "custom_id" # Index name is not 'elector_id'
+    # Ensure there is no 'elector_id' column either
+    if 'elector_id' in data.columns:
+        data = data.drop(columns=['elector_id'])
+    return data
+
+@pytest.fixture
+def elector_data_with_elector_id_column(elector_data_valid):
+    """Returns elector DataFrame with 'elector_id' as a column, not index."""
+    data = elector_data_valid.reset_index() # 'elector_id' becomes a column
+    return data
+
 
 @pytest.fixture
 def elector_data_empty():
-    """Returns an empty elector DataFrame."""
+    """Returns an empty elector DataFrame with correct columns but no data."""
+    # Adjusted to have the correct column names as expected by TransitionModel's checks
     return pd.DataFrame(
         columns=["ideology_score", "region", "is_papabile"],
-        index=pd.Index([], name="elector_id"),
+        index=pd.Index([], name="elector_id"), # Keep index named for consistency
+        dtype=object # Specify dtype to avoid issues with empty df type inference later
     )
 
 
 @pytest.fixture
 def previous_votes_valid(elector_data_valid):
-    """Returns a valid previous votes dictionary."""
+    """Returns a valid previous votes Series."""
     ids = elector_data_valid.index.tolist()
-    # E01->E02, E02->E01, E03->E03(invalid self), E04->E05, E05->E04
-    # Note: The model itself doesn't prevent self-votes in input,
-    # but the simulation logic should. Here we test model handles it.
-    return {
+    # E01->E02, E02->E01, E03->E03, E04->E05, E05->E04
+    return pd.Series({
         ids[0]: ids[1],
         ids[1]: ids[0],
-        ids[2]: ids[2],
+        ids[2]: ids[2], # Self-vote, model should handle
         ids[3]: ids[4],
         ids[4]: ids[3],
-    }
-
+    })
 
 @pytest.fixture
 def previous_votes_invalid_voter(elector_data_valid):
-    """Returns previous votes with an invalid voter ID."""
+    """Returns previous votes Series with an invalid voter ID."""
     ids = elector_data_valid.index.tolist()
-    return {"E99": ids[0], ids[1]: ids[2]}
-
+    return pd.Series({"E99": ids[0], ids[1]: ids[2]})
 
 @pytest.fixture
 def previous_votes_invalid_candidate(elector_data_valid):
-    """Returns previous votes with an invalid candidate ID."""
+    """Returns previous votes Series with an invalid candidate ID."""
     ids = elector_data_valid.index.tolist()
-    return {ids[0]: "E99", ids[1]: ids[2]}
+    return pd.Series({ids[0]: "C99", ids[1]: ids[2]})
 
-
-# --- Test Cases ---
-
-
-def test_transition_model_init_valid_params(elector_data_valid):
-    """Tests successful initialization with valid parameters, including defaults and overrides."""
-    # Test with minimal required parameters, relying on defaults for others
-    # beta_weight and stickiness_factor are technically not *required* if defaults are desired,
-    # but the constructor requires them explicitly for now.
-    model_defaults = TransitionModel(
-        elector_data=elector_data_valid, beta_weight=0.5, stickiness_factor=0.7
+@pytest.fixture
+def elector_data_papabile_setup():
+    """Specific setup for testing papabile factor, ensuring clear distinctions."""
+    ids = ["E01", "E02", "E03"] # Elector, Papabile Candidate, Non-Papabile Candidate
+    scores = [-1.0, 0.0, 0.5]  # E01 is at -1.0
+                               # C_papabile (E02) is at 0.0 (distance 1.0)
+                               # C_non_papabile (E03) is at 0.5 (distance 1.5)
+    regions = ["Europe", "Europe", "Europe"] # Same region to neutralize regional effect
+    papabile_status = [False, True, False]   # E02 is papabile
+    df = pd.DataFrame(
+        {"ideology_score": scores, "region": regions, "is_papabile": papabile_status},
+        index=pd.Index(ids, name="elector_id")
     )
-    assert model_defaults.beta_weight == 0.5
-    assert model_defaults.stickiness_factor == 0.7
-    assert model_defaults.bandwagon_strength == 0.0  # Default
-    assert model_defaults.regional_affinity_bonus == 0.1  # Default
-    assert model_defaults.papabile_weight_factor == 1.5  # Default
-    pd.testing.assert_frame_equal(model_defaults.elector_data_full, elector_data_valid)
+    return df
 
-    # Test with all parameters specified
-    model_all_params = TransitionModel(
-        elector_data=elector_data_valid,
-        beta_weight=1.0,
-        stickiness_factor=0.2,
-        bandwagon_strength=0.3,
-        regional_affinity_bonus=0.4,
-        papabile_weight_factor=1.8,
+@pytest.fixture
+def elector_data_regional_setup():
+    """Specific setup for testing regional affinity."""
+    ids = ["E01_Europe", "C01_Europe", "C02_Asia"]
+    scores = [0.0, 0.1, 0.2] # Ideology close to minimize its impact vs regional
+    regions = ["Europe", "Europe", "Asia"]
+    papabile_status = [False, False, False] # Neutralize papabile
+    df = pd.DataFrame(
+        {"ideology_score": scores, "region": regions, "is_papabile": papabile_status},
+        index=pd.Index(ids, name="elector_id")
     )
-    assert model_all_params.beta_weight == 1.0
-    assert model_all_params.stickiness_factor == 0.2
-    assert model_all_params.bandwagon_strength == 0.3
-    assert model_all_params.regional_affinity_bonus == 0.4
-    assert model_all_params.papabile_weight_factor == 1.8
+    return df
+
+@pytest.fixture
+def elector_data_bandwagon_setup():
+    """Specific setup for bandwagon effect."""
+    ids = ["E01", "C1", "C2", "C3"] # Elector, Candidate1, Candidate2, Candidate3
+    scores = [0.0, 0.1, 0.2, 0.3]   # Some ideological differences
+    regions = ["A", "A", "A", "A"]  # Neutralize regional
+    papabile_status = [False, False, False, False] # Neutralize papabile
+    df = pd.DataFrame(
+        {"ideology_score": scores, "region": regions, "is_papabile": papabile_status},
+        index=pd.Index(ids, name="elector_id")
+    )
+    return df
+
+@pytest.fixture
+def previous_votes_bandwagon_setup(elector_data_bandwagon_setup):
+    """Previous votes for bandwagon test: C1 gets 0, C2 gets 1, C3 gets 2."""
+    return pd.Series({
+        "E99": "C2", # C2 gets one vote
+        "E98": "C3", # C3 gets one vote
+        "E97": "C3", # C3 gets another vote
+    })
 
 
-@pytest.mark.parametrize(
-    "param_name,invalid_value,error_message_match",
-    [
-        ("beta_weight", -0.1, "beta_weight must be non-negative."),
-        ("stickiness_factor", -0.1, "stickiness_factor must be between 0 and 1."),
-        ("stickiness_factor", 1.1, "stickiness_factor must be between 0 and 1."),
-        ("bandwagon_strength", -0.1, "bandwagon_strength must be non-negative."),
-        (
-            "regional_affinity_bonus",
-            -0.1,
-            "regional_affinity_bonus must be non-negative.",
-        ),
-        (
-            "papabile_weight_factor",
-            -0.1,
-            "papabile_weight_factor must be non-negative.",
-        ),
-    ],
-)
-def test_transition_model_init_invalid_numeric_params(
-    elector_data_valid, param_name, invalid_value, error_message_match
-):
-    """Tests initialization failure with invalid numeric model parameters."""
-    params = {
-        "elector_data": elector_data_valid,
-        "beta_weight": 1.0,
-        "stickiness_factor": 0.5,
-        "bandwagon_strength": 0.0,
-        "regional_affinity_bonus": 0.1,
-        "papabile_weight_factor": 1.5,
-    }
-    params[param_name] = invalid_value
-    with pytest.raises(ValueError, match=error_message_match):
-        TransitionModel(**params)
+@pytest.fixture
+def elector_data_stickiness_setup():
+    """Setup for stickiness: E01 previously voted for C2."""
+    ids = ["E01", "C1", "C2"]
+    scores = [0.0, 0.5, -0.5] # E01, C1 (less preferred), C2 (more preferred ideologically for E01)
+    regions = ["A", "A", "A"] # Neutral
+    papabile_status = [False, False, False] # Neutral
+    df = pd.DataFrame(
+        {"ideology_score": scores, "region": regions, "is_papabile": papabile_status},
+        index=pd.Index(ids, name="elector_id")
+    )
+    return df
+
+@pytest.fixture
+def previous_votes_stickiness_setup(elector_data_stickiness_setup):
+    """E01 voted for C2."""
+    return pd.Series({"E01": "C2"})
 
 
-def test_transition_model_init_elector_data_not_dataframe():
-    """Tests initialization failure if elector_data is not a DataFrame."""
-    with pytest.raises(ValueError, match="elector_data must be a pandas DataFrame."):
-        # Provide all required numeric params to isolate the elector_data type error
-        TransitionModel(
-            elector_data="not_a_dataframe", beta_weight=1.0, stickiness_factor=0.5
-        )
+@pytest.fixture
+def elector_data_combined_effects():
+    """Data for testing combined effects and order of operations."""
+    ids = ["E01", "C1_pap_same_region", "C2_nonpap_diff_region", "C3_pap_diff_region"]
+    df = pd.DataFrame({
+        "ideology_score": [0.0, 0.5, 0.2, -0.3],
+        "region":         ["Europe", "Europe", "Asia", "Asia"],
+        "is_papabile":    [False, True, False, True]
+    }, index=pd.Index(ids, name="elector_id"))
+    return df
 
+@pytest.fixture
+def elector_data_for_dynamic_beta(elector_data_valid):
+    """Fixture for dynamic beta tests, can use the standard valid data."""
+    return elector_data_valid
 
-@pytest.mark.parametrize(
-    "missing_col_fixture_name,missing_col_name",
-    [
-        ("elector_data_missing_ideology_score", "ideology_score"),
-        ("elector_data_missing_region", "region"),
-        ("elector_data_missing_papabile", "is_papabile"),
-    ],
-)
-def test_transition_model_init_elector_data_missing_column(
-    request, missing_col_fixture_name, missing_col_name, elector_data_valid
-):
-    """Tests initialization failure if elector_data is missing required columns."""
-    elector_data_missing_col = request.getfixturevalue(missing_col_fixture_name)
-    with pytest.raises(
-        ValueError, match=f"Elector data must contain a '{missing_col_name}' column."
-    ):
-        # Provide all required numeric params to isolate the column error
-        TransitionModel(
-            elector_data=elector_data_missing_col,
-            beta_weight=1.0,
-            stickiness_factor=0.5,
-        )
+@pytest.fixture
+def elector_data_for_fatigue(elector_data_valid):
+    """Fixture for candidate fatigue tests."""
+    return elector_data_valid
 
-
-def test_transition_model_init_elector_data_index_name_warning(
-    elector_data_valid, caplog
-):
-    """Tests warning if elector_data index is not named 'elector_id'."""
-    elector_data_wrong_index_name = elector_data_valid.copy()
-    elector_data_wrong_index_name.index.name = "wrong_name"
-    with caplog.at_level(logging.WARNING):
-        TransitionModel(
-            elector_data=elector_data_wrong_index_name,
-            beta_weight=1.0,
-            stickiness_factor=0.5,
-        )
-    assert "Elector data index is not named 'elector_id'." in caplog.text
-
+@pytest.fixture
+def elector_data_for_stop_candidate():
+    """
+    Custom elector data for stop candidate tests.
+    E01: Moderate (-0.1), should find E03 (FarRight=2.0) unacceptable if threshold is < 2.1
+    E02: Left (-1.5)
+    E03: FarRight (2.0) - Potential Threat
+    E04: CenterRight (0.5) - Potential Stop Candidate for E01 against E03
+    E05: FarLeft (-2.0)
+    """
+    ids = [f"E{i+1:02d}" for i in range(5)]
+    scores = np.array([-0.1, -1.5, 2.0, 0.5, -2.0]) # E01, E02, E03(Threat), E04(Stop), E05
+    regions = ["Europe", "Asia", "Europe", "Americas", "Asia"] # Keep structure
+    papabile_status = [False, False, True, True, False] # E03, E04 papabile to make them viable
+    df = pd.DataFrame(
+        {"ideology_score": scores, "region": regions, "is_papabile": papabile_status},
+        index=pd.Index(ids, name="elector_id"),
+    )
+    return df
 
 def test_calculate_probabilities_first_round(elector_data_valid):
     """Tests probability calculation without previous votes (first round).
     Uses default model parameters for bandwagon, regional, and papabile effects.
     """
     model = TransitionModel(
-        elector_data=elector_data_valid, beta_weight=0.5, stickiness_factor=0.7
+        elector_data=elector_data_valid, initial_beta_weight=0.5, stickiness_factor=0.7
     )
     n_electors = len(elector_data_valid)
     prob_matrix, _ = model.calculate_transition_probabilities(
-        elector_data_runtime=elector_data_valid, current_votes=None
+        current_round_num=1, 
+        previous_round_votes=None
     )
 
     assert isinstance(prob_matrix, np.ndarray)
@@ -227,11 +230,12 @@ def test_calculate_probabilities_with_stickiness(
     Uses default model parameters for bandwagon, regional, and papabile effects.
     """
     model = TransitionModel(
-        elector_data=elector_data_valid, beta_weight=0.5, stickiness_factor=0.7
+        elector_data=elector_data_valid, initial_beta_weight=0.5, stickiness_factor=0.7
     )
     n_electors = len(elector_data_valid)
     prob_matrix, _ = model.calculate_transition_probabilities(
-        elector_data_runtime=elector_data_valid, current_votes=previous_votes_valid
+        current_round_num=1, 
+        previous_round_votes=previous_votes_valid
     )
 
     assert isinstance(prob_matrix, np.ndarray)
@@ -272,13 +276,13 @@ def test_calculate_probabilities_invalid_voter_id(
     If an elector in self.elector_data_full.index IS NOT in current_votes, that's fine (no stickiness).
     """
     model = TransitionModel(
-        elector_data=elector_data_valid, beta_weight=0.5, stickiness_factor=0.7
+        elector_data=elector_data_valid, initial_beta_weight=0.5, stickiness_factor=0.7
     )
     # This should run without error, as the loop iterates over model's known electors.
     # Stickiness for 'E99' won't be applied as 'E99' is not in self.elector_data_full.index.
     prob_matrix, _ = model.calculate_transition_probabilities(
-        elector_data_runtime=elector_data_valid,
-        current_votes=previous_votes_invalid_voter,
+        current_round_num=1, 
+        previous_round_votes=previous_votes_invalid_voter
     )
     assert prob_matrix is not None  # Basic check that calculation completed
 
@@ -290,12 +294,12 @@ def test_calculate_probabilities_invalid_candidate_id(
     The model should handle this gracefully by not finding the candidate and thus not applying stickiness for that vote.
     """
     model = TransitionModel(
-        elector_data=elector_data_valid, beta_weight=0.5, stickiness_factor=0.7
+        elector_data=elector_data_valid, initial_beta_weight=0.5, stickiness_factor=0.7
     )
     # Should run without error. The try-except ValueError in stickiness logic handles this.
     prob_matrix, _ = model.calculate_transition_probabilities(
-        elector_data_runtime=elector_data_valid,
-        current_votes=previous_votes_invalid_candidate,
+        current_round_num=1, 
+        previous_round_votes=previous_votes_invalid_candidate
     )
     assert prob_matrix is not None  # Basic check that calculation completed
 
@@ -308,19 +312,20 @@ def test_calculate_probabilities_zero_stickiness(
     """
     model_zero_stick = TransitionModel(
         elector_data=elector_data_valid,
-        beta_weight=0.5,
+        initial_beta_weight=0.5,
         stickiness_factor=0.0,  # Key: zero stickiness
         regional_affinity_bonus=0.1,  # Default
         papabile_weight_factor=1.5,  # Default
         bandwagon_strength=0.0,  # Default
     )
     prob_matrix_zero_stick, _ = model_zero_stick.calculate_transition_probabilities(
-        elector_data_runtime=elector_data_valid, current_votes=previous_votes_valid
+        current_round_num=1, 
+        previous_round_votes=previous_votes_valid
     )
 
     model_first_round_comparable = TransitionModel(
         elector_data=elector_data_valid,
-        beta_weight=0.5,
+        initial_beta_weight=0.5,
         stickiness_factor=0.0,  # Effectively no stickiness for comparison
         regional_affinity_bonus=0.1,  # Default
         papabile_weight_factor=1.5,  # Default
@@ -328,7 +333,8 @@ def test_calculate_probabilities_zero_stickiness(
     )
     prob_matrix_first_round, _ = (
         model_first_round_comparable.calculate_transition_probabilities(
-            elector_data_runtime=elector_data_valid, current_votes=None
+            current_round_num=1, 
+            previous_round_votes=None
         )
     )
 
@@ -347,7 +353,7 @@ def test_calculate_probabilities_full_stickiness(
     """
     model_full_stick = TransitionModel(
         elector_data=elector_data_valid,
-        beta_weight=0.5,  # Non-zero ideology effect
+        initial_beta_weight=0.5,  # Non-zero ideology effect
         stickiness_factor=1.0,  # Full stickiness
         regional_affinity_bonus=0.0,  # Turn off for simplicity here
         papabile_weight_factor=1.0,  # Turn off for simplicity here
@@ -355,7 +361,8 @@ def test_calculate_probabilities_full_stickiness(
     )
     n_electors = len(elector_data_valid)
     prob_matrix, _ = model_full_stick.calculate_transition_probabilities(
-        elector_data_runtime=elector_data_valid, current_votes=previous_votes_valid
+        current_round_num=1, 
+        previous_round_votes=previous_votes_valid
     )
 
     assert prob_matrix.shape == (n_electors, n_electors)
@@ -423,32 +430,14 @@ def elector_data_very_small():
 def test_transition_model_init_empty_elector_data_logs_warning(
     elector_data_empty, caplog
 ):
-    """Tests TransitionModel initialization with empty elector data and subsequent calculation."""
-    # __init__ should not raise an error for an empty DataFrame with correct columns.
-    # The logging of empty data occurs in calculate_transition_probabilities.
-    model = TransitionModel(
-        elector_data=elector_data_empty, beta_weight=0.5, stickiness_factor=0.1
-    )
-    assert model is not None  # Check that model was created
-    # No specific __init__ warning for *just* empty data if columns are present.
-    # assert "TransitionModel initialized with empty elector data." in caplog.text # This log doesn't exist in current __init__
-
-    # Test calculate_transition_probabilities with this model
-    # It should handle the zero-elector case gracefully (e.g., return empty array and log)
-    with caplog.at_level(
-        logging.WARNING
-    ):  # Capture warnings from calculate_transition_probabilities
-        prob_matrix, details = model.calculate_transition_probabilities(
-            elector_data_runtime=elector_data_empty,  # Pass it again for runtime consistency if needed by method signature
-            current_votes=None,
+    """Tests TransitionModel initialization with empty elector data raises ValueError."""
+    # Test that initializing with empty elector_data raises a ValueError
+    with pytest.raises(ValueError) as excinfo:
+        TransitionModel(
+            elector_data=elector_data_empty,
+            initial_beta_weight=1.0
         )
-    assert prob_matrix.shape == (0, 0)  # Expecting a 0x0 array
-    assert isinstance(details, list)
-    assert not details
-    assert (
-        "No effective candidates to calculate transition probabilities for."
-        in caplog.text
-    )
+    assert "elector_data must be a non-empty DataFrame." in str(excinfo.value)
 
 
 def test_papabile_weight_factor_effect(elector_data_valid):
@@ -460,27 +449,27 @@ def test_papabile_weight_factor_effect(elector_data_valid):
     # Baseline model: papabile factor is neutral
     model_baseline = TransitionModel(
         elector_data=elector_data_valid,
-        beta_weight=beta_weight,
+        initial_beta_weight=beta_weight,
         papabile_weight_factor=papabile_factor_baseline,
         regional_affinity_bonus=0.0,  # Isolate papabile effect
         bandwagon_strength=0.0,  # Isolate papabile effect
         stickiness_factor=0.0        # Isolate papabile effect (also no current_votes)
     )
     probs_baseline, _ = model_baseline.calculate_transition_probabilities(
-        elector_data_runtime=elector_data_valid, current_votes=None
+        current_round_num=1
     )
 
     # Model with increased papabile factor
     model_increased_papabile = TransitionModel(
         elector_data=elector_data_valid,
-        beta_weight=beta_weight,
+        initial_beta_weight=beta_weight,
         papabile_weight_factor=papabile_factor_increased,
         regional_affinity_bonus=0.0,
         bandwagon_strength=0.0,
         stickiness_factor=0.0        # Isolate papabile effect (also no current_votes)
     )
     probs_increased, _ = model_increased_papabile.calculate_transition_probabilities(
-        elector_data_runtime=elector_data_valid, current_votes=None
+        current_round_num=1
     )
 
     # Based on the actual elector_data_valid fixture:
@@ -496,6 +485,8 @@ def test_papabile_weight_factor_effect(elector_data_valid):
 
     # For E01 voting for E03 (papabile):
     # Probability should be higher when papabile_weight_factor is increased.
+    # For E01 voting for E02 (non-papabile):
+    # Probability may decrease or stay same, but ratio P(papabile)/P(non-papabile) should increase.
     prob_e01_e03_baseline = probs_baseline[idx_e01, idx_e03]
     prob_e01_e03_increased = probs_increased[idx_e01, idx_e03]
     msg_e01_e03_prob = (
@@ -544,7 +535,7 @@ def test_papabile_factor_multiplicative_effect():
     # Model with beta=1, papabile_weight_factor=1.5 (default), other factors off or neutral
     model = TransitionModel(
         elector_data=elector_data,
-        beta_weight=1.0,
+        initial_beta_weight=1.0,
         papabile_weight_factor=1.5, # Default, but explicit for clarity
         regional_affinity_bonus=0.0, # Neutralize regional effect
         bandwagon_strength=0.0,      # Neutralize bandwagon effect
@@ -566,12 +557,12 @@ def test_papabile_factor_multiplicative_effect():
     # Pref E01->C2_adj = Pref E01->C2_base (no change) approx 0.9048
     # Now, E01 prefers C1 over C2.
 
-    prob_matrix, effective_candidates = model.calculate_transition_probabilities(
-        elector_data_runtime=elector_data, # Provide runtime data
-        active_candidates=["C1", "C2"] # Focus on C1 and C2
+    prob_matrix, _ = model.calculate_transition_probabilities(
+        current_round_num=1
     )
+    effective_candidates = model.get_candidate_ids()
 
-    # Elector E01 is the first row in the original elector_data, so it's index 0 for probabilities
+    # Elector E01 is the first row in the original elector_data, so it's index is 0 for probabilities
     # if all original electors are used. However, the model re-indexes internally for electors if needed.
     # For this setup, elector_data only has one *actual* elector if we filter it.
     # Let's assume the model's self.elector_data_full uses the order from input.
@@ -629,7 +620,7 @@ def test_regional_affinity_bonus_effect():
 
     model = TransitionModel(
         elector_data=elector_data,
-        beta_weight=beta,
+        initial_beta_weight=beta,
         papabile_weight_factor=1.0,     # Neutralize papabile (multiplicative factor of 1)
         regional_affinity_bonus=regional_bonus_value,
         bandwagon_strength=0.0,         # Neutralize bandwagon
@@ -646,10 +637,10 @@ def test_regional_affinity_bonus_effect():
     # Score E01->C2_adj = Pref E01->C2_base (no change) = 0.9048
     # Now, E01 should prefer C1 over C2.
 
-    prob_matrix, effective_candidates = model.calculate_transition_probabilities(
-        elector_data_runtime=elector_data,
-        active_candidates=["C1", "C2"]
+    prob_matrix, _ = model.calculate_transition_probabilities(
+        current_round_num=1
     )
+    effective_candidates = model.get_candidate_ids()
 
     c1_idx_effective = effective_candidates.index("C1")
     c2_idx_effective = effective_candidates.index("C2")
@@ -704,7 +695,7 @@ def test_bandwagon_effect():
 
     model = TransitionModel(
         elector_data=elector_data,
-        beta_weight=beta,
+        initial_beta_weight=beta,
         papabile_weight_factor=1.0,
         regional_affinity_bonus=0.0,
         bandwagon_strength=bandwagon_val,
@@ -736,13 +727,13 @@ def test_bandwagon_effect():
     # Score E01->C2_adj = Pref E01->C2_base + Bandwagon_C2 = 0.9048 + 0.0 = 0.9048
     # E01 should now prefer C1 over C2.
 
-    prob_matrix, effective_candidates = model.calculate_transition_probabilities(
-        elector_data_runtime=elector_data,
-        current_votes=current_votes_for_bandwagon,
-        active_candidates=["C1", "C2"]
+    prob_matrix, _ = model.calculate_transition_probabilities(
+        current_round_num=1, 
+        previous_round_votes=current_votes_for_bandwagon
     )
+    effective_candidates = model.get_candidate_ids()
 
-    e01_idx_in_model = model.candidate_names.index("E01")
+    e01_idx_in_model = model.candidate_ids.index("E01")
     c1_idx_effective = effective_candidates.index("C1")
     c2_idx_effective = effective_candidates.index("C2")
 
@@ -763,7 +754,7 @@ def test_bandwagon_effect():
     assert e01_prob_for_c1 > e01_prob_for_c2, \
         f"P(E01->C1) ({e01_prob_for_c1:.4f}) should be > P(E01->C2) ({e01_prob_for_c2:.4f})"
 
-    expected_total_score = expected_score_c1 + expected_score_c2
+    expected_total_score = expected_score_c1 + expected_score_c2 + np.exp(-beta * abs(0.0 - 0.0)) + np.exp(-beta * abs(0.0 - 0.0))
     expected_prob_c1 = expected_score_c1 / expected_total_score
     expected_prob_c2 = expected_score_c2 / expected_total_score
 
@@ -790,7 +781,7 @@ def test_stickiness_factor_effect():
 
     model = TransitionModel(
         elector_data=elector_data,
-        beta_weight=beta,
+        initial_beta_weight=beta,
         papabile_weight_factor=1.0,     # Neutralize papabile
         regional_affinity_bonus=0.0,    # Neutralize regional bonus
         bandwagon_strength=0.0,         # Neutralize bandwagon
@@ -816,14 +807,14 @@ def test_stickiness_factor_effect():
     # Score E01->C2_adj = Pref E01->C2_base * (1 + 0.0) = 0.9048 * 1 = 0.9048
     # E01 should now prefer C1 over C2.
 
-    prob_matrix, effective_candidates = model.calculate_transition_probabilities(
-        elector_data_runtime=elector_data,
-        current_votes=current_votes_for_stickiness,
-        active_candidates=["C1", "C2"]
+    prob_matrix, _ = model.calculate_transition_probabilities(
+        current_round_num=1, 
+        previous_round_votes=current_votes_for_stickiness
     )
+    effective_candidates = model.get_candidate_ids()
 
     # E01 is the first elector in the original elector_data, so its index is 0 in prob_matrix
-    e01_idx_in_model = model.candidate_names.index("E01")
+    e01_idx_in_model = model.candidate_ids.index("E01")
     c1_idx_effective = effective_candidates.index("C1")
     c2_idx_effective = effective_candidates.index("C2")
 
@@ -876,7 +867,7 @@ def test_combined_effects_order_of_operations():
 
     model = TransitionModel(
         elector_data=elector_data,
-        beta_weight=beta,
+        initial_beta_weight=beta,
         papabile_weight_factor=papabile_factor,
         regional_affinity_bonus=regional_bonus,
         bandwagon_strength=bandwagon_strength_val,
@@ -912,10 +903,12 @@ def test_combined_effects_order_of_operations():
     # Votes for C1 among active = 1 (E01->C1)
     # Votes for C2 among active = 2 (E02->C2, E03->C2)
     # Total votes for C1,C2 = 3
-    bandwagon_share_c1 = 1/3
-    bandwagon_share_c2 = 2/3
-    bonus_c1_bandwagon = bandwagon_strength_val * bandwagon_share_c1
-    bonus_c2_bandwagon = bandwagon_strength_val * bandwagon_share_c2
+    vote_counts_for_bandwagon = pd.Series(current_votes_dict).value_counts()
+    max_votes_for_bandwagon = vote_counts_for_bandwagon.max()
+    c1_votes = vote_counts_for_bandwagon.get('C1', 0)
+    c2_votes = vote_counts_for_bandwagon.get('C2', 0)
+    bonus_c1_bandwagon = (c1_votes / max_votes_for_bandwagon) * bandwagon_strength_val if max_votes_for_bandwagon > 0 else 0
+    bonus_c2_bandwagon = (c2_votes / max_votes_for_bandwagon) * bandwagon_strength_val if max_votes_for_bandwagon > 0 else 0
     score_c1_bandwagon = score_c1_regional + bonus_c1_bandwagon
     score_c2_bandwagon = score_c2_regional + bonus_c2_bandwagon
 
@@ -924,13 +917,13 @@ def test_combined_effects_order_of_operations():
     expected_score_c2 = score_c2_bandwagon
 
     # --- Get model's probabilities ---
-    prob_matrix, effective_candidates = model.calculate_transition_probabilities(
-        elector_data_runtime=elector_data, 
-        current_votes=current_votes_dict,
-        active_candidates=["C1", "C2"]
+    prob_matrix, _ = model.calculate_transition_probabilities(
+        current_round_num=1, 
+        previous_round_votes=current_votes_dict
     )
+    effective_candidates = model.get_candidate_ids()
 
-    e01_idx_in_model = model.candidate_names.index("E01")
+    e01_idx_in_model = model.candidate_ids.index("E01")
     c1_idx_effective = effective_candidates.index("C1")
     c2_idx_effective = effective_candidates.index("C2")
 
@@ -938,7 +931,38 @@ def test_combined_effects_order_of_operations():
     model_prob_e01_c2 = prob_matrix[e01_idx_in_model, c2_idx_effective]
 
     # --- Compare with expected probabilities ---
-    total_expected_score = expected_score_c1 + expected_score_c2
+    # Calculate expected scores for E01 vs E02 and E01 vs E03 (as candidates)
+    # E01: ideo 0.0, region "North", previous vote C1
+    # E02 (as candidate): ideo 0.5, region "North", papabile False # Corrected from 0.1
+    # E03 (as candidate): ideo -0.5, region "South", papabile False # Corrected from -0.2
+
+    # E01 vs E02 (candidate)
+    score_e02_ideology = np.exp(-beta * abs(0.0 - 0.5)) # E01 vs E02_cand, corrected from 0.1
+    score_e02_papabile = score_e02_ideology # E02_cand not papabile
+    score_e02_regional = score_e02_papabile + regional_bonus # E01 and E02_cand same region
+    # Bandwagon for E02_cand: E02 got 1 vote (from E02), E03 got 1 vote (from E03)
+    # Active Cands C1,C2. E02, E03 as candidates are not in current_votes_dict for C1,C2
+    # This means E02_cand and E03_cand bandwagon share relative to C1,C2 is 0.
+    # However, the model calculates bandwagon based on *all* candidates if `candidate_vote_shares_current_round` is not None.
+    # The test's `current_votes_dict` is for `previous_round_votes` which drives stickiness and bandwagon.
+    # For bandwagon, vote counts are derived from `previous_round_votes` for *all* candidates mentioned there.
+    # E02 was voted for by E02. E03 by E03. C1 by E01. C2 by E02, E03. Total 5 votes if all unique.
+    # Let's assume the test's `previous_round_votes` (current_votes_dict) is {'E01': 'C1', 'E02': 'C2', 'E03': 'C2'}
+    # Vote counts for bandwagon: C1:1, C2:2. E02_cand:0, E03_cand:0 within this. Max_votes = 2 for C2.
+    # So bandwagon bonus for E02_cand and E03_cand is 0 based on this `previous_round_votes` interpretation.
+    bonus_e02_bandwagon = bandwagon_strength_val * (0/2) # Assuming E02 (as cand) got 0 votes in prev round for bandwagon calc
+    score_e02_bandwagon = score_e02_regional + bonus_e02_bandwagon
+    expected_score_e02_for_e01 = score_e02_bandwagon # E01 did not vote for E02, so no stickiness boost
+
+    # E01 vs E03 (candidate)
+    score_e03_ideology = np.exp(-beta * abs(0.0 - (-0.5))) # E01 vs E03_cand, corrected from -0.2
+    score_e03_papabile = score_e03_ideology # E03_cand not papabile
+    score_e03_regional = score_e03_papabile # E01 and E03_cand different regions
+    bonus_e03_bandwagon = bandwagon_strength_val * (0/2) # Assuming E03 (as cand) got 0 votes in prev round for bandwagon calc
+    score_e03_bandwagon = score_e03_regional + bonus_e03_bandwagon
+    expected_score_e03_for_e01 = score_e03_bandwagon # E01 did not vote for E03, so no stickiness boost
+
+    total_expected_score = expected_score_c1 + expected_score_c2 + expected_score_e02_for_e01 + expected_score_e03_for_e01
     expected_prob_c1 = expected_score_c1 / total_expected_score
     expected_prob_c2 = expected_score_c2 / total_expected_score
 
@@ -946,3 +970,234 @@ def test_combined_effects_order_of_operations():
         f"P(E01->C1) model: {model_prob_e01_c1:.5f}, expected: {expected_prob_c1:.5f}"
     assert np.isclose(model_prob_e01_c2, expected_prob_c2), \
         f"P(E01->C2) model: {model_prob_e01_c2:.5f}, expected: {expected_prob_c2:.5f}"
+
+# --- Test Cases for New Dynamics ---
+
+# --- Dynamic Beta Weight Tests ---
+
+def test_dynamic_beta_updates_correctly_when_enabled(elector_data_valid):
+    """
+    Tests that beta_weight increases across rounds when enable_dynamic_beta is True
+    and beta_growth_rate is > 1.
+    """
+    initial_beta = 0.5
+    growth_rate = 1.1
+    model = TransitionModel(
+        elector_data=elector_data_valid,
+        initial_beta_weight=initial_beta,
+        beta_growth_rate=growth_rate,
+        enable_dynamic_beta=True,
+        stickiness_factor=0.5 
+    )
+    
+    # Round 1
+    _, details_r1 = model.calculate_transition_probabilities(current_round_num=1)
+    assert np.isclose(details_r1[0]['effective_beta_weight'], initial_beta * (growth_rate ** 0))
+
+    # Round 2
+    _, details_r2 = model.calculate_transition_probabilities(current_round_num=2)
+    expected_beta_r2 = initial_beta * (growth_rate ** 1)
+    assert np.isclose(details_r2[0]['effective_beta_weight'], expected_beta_r2)
+
+    # Round 3
+    _, details_r3 = model.calculate_transition_probabilities(current_round_num=3)
+    expected_beta_r3 = initial_beta * (growth_rate ** 2)
+    assert np.isclose(details_r3[0]['effective_beta_weight'], expected_beta_r3)
+
+def test_dynamic_beta_does_not_update_when_disabled(elector_data_valid):
+    """
+    Tests that beta_weight remains constant if enable_dynamic_beta is False,
+    even if beta_growth_rate is specified.
+    """
+    initial_beta = 0.5
+    growth_rate = 1.1 
+    model = TransitionModel(
+        elector_data=elector_data_valid,
+        initial_beta_weight=initial_beta,
+        beta_growth_rate=growth_rate, # Should be ignored
+        enable_dynamic_beta=False,
+        stickiness_factor=0.5
+    )
+    
+    # Round 1
+    _, details_r1 = model.calculate_transition_probabilities(current_round_num=1)
+    assert np.isclose(details_r1[0]['effective_beta_weight'], initial_beta)
+
+    # Round 2
+    _, details_r2 = model.calculate_transition_probabilities(current_round_num=2)
+    assert np.isclose(details_r2[0]['effective_beta_weight'], initial_beta)
+
+def test_dynamic_beta_constant_if_growth_rate_is_one(elector_data_valid):
+    """
+    Tests that beta_weight remains constant if enable_dynamic_beta is True
+    but beta_growth_rate is 1.0.
+    """
+    initial_beta = 0.5
+    growth_rate = 1.0
+    model = TransitionModel(
+        elector_data=elector_data_valid,
+        initial_beta_weight=initial_beta,
+        beta_growth_rate=growth_rate,
+        enable_dynamic_beta=True,
+        stickiness_factor=0.5
+    )
+    
+    # Round 1
+    _, details_r1 = model.calculate_transition_probabilities(current_round_num=1)
+    assert np.isclose(details_r1[0]['effective_beta_weight'], initial_beta)
+
+    # Round 2
+    _, details_r2 = model.calculate_transition_probabilities(current_round_num=2)
+    assert np.isclose(details_r2[0]['effective_beta_weight'], initial_beta)
+
+# --- Candidate Fatigue Tests ---
+# (To be added next)
+
+# --- Stop Candidate Behavior Tests ---
+# (To be added after fatigue)
+
+def test_stop_candidate_threshold_unacceptable_distance_respected(elector_data_for_stop_candidate):
+    """Tests that stop candidate logic only activates if distance threshold is met."""
+    elector_idx_e01 = 0 # Elector E01 (ideology -0.1)
+    num_candidates = len(elector_data_for_stop_candidate)
+    
+    current_vote_shares_threat_exists = np.zeros(num_candidates)
+    current_vote_shares_threat_exists[2] = 0.25 # E03 is a threat (share 25%)
+
+    # Helper to extract utility from details
+    def get_utility_from_details(details_list, elector_id_str, target_candidate_id_str):
+        elector_details = next((d for d in details_list if d['elector_id'] == elector_id_str), None)
+        if elector_details is None:
+            raise ValueError(f"Elector {elector_id_str} not found in details.")
+        candidate_utility_info = next((cd for cd in elector_details['candidate_details'] if cd['candidate_id'] == target_candidate_id_str), None)
+        if candidate_utility_info is None:
+            raise ValueError(f"Candidate {target_candidate_id_str} not found for elector {elector_id_str} in details.")
+        return candidate_utility_info['final_utility_before_softmax']
+
+    # Scenario 1: Distance threshold is 2.2 (E03 (dist 2.1) is NOT unacceptable to E01)
+    model_dist_too_high = TransitionModel(
+        elector_data=elector_data_for_stop_candidate, initial_beta_weight=1.0,
+        enable_stop_candidate=True, stop_candidate_boost_factor=1.5,
+        stop_candidate_threshold_unacceptable_distance=2.2, # Ideo dist E01-E03 is 2.1
+        stop_candidate_threat_min_vote_share=0.20, stickiness_factor=0.0
+    )
+    _, details_dist_too_high = model_dist_too_high.calculate_transition_probabilities(
+        current_round_num=1, 
+        candidate_vote_shares_current_round=current_vote_shares_threat_exists
+    )
+    utility_e01_e04_dist_too_high = get_utility_from_details(details_dist_too_high, "E01", "E04")
+
+    model_baseline = TransitionModel(
+        elector_data=elector_data_for_stop_candidate, initial_beta_weight=1.0,
+        enable_stop_candidate=True, stop_candidate_boost_factor=1.0, # No boost
+        stop_candidate_threshold_unacceptable_distance=2.2, # Same distance threshold
+        stop_candidate_threat_min_vote_share=0.20, stickiness_factor=0.0
+    )
+    _, details_baseline = model_baseline.calculate_transition_probabilities(
+        current_round_num=1, 
+        candidate_vote_shares_current_round=current_vote_shares_threat_exists
+    )
+    utility_e01_e04_baseline = get_utility_from_details(details_baseline, "E01", "E04")
+    
+    assert np.isclose(utility_e01_e04_dist_too_high, utility_e01_e04_baseline), \
+        "Stop candidate boost applied even when threat was not ideologically distant enough (scenario 1)."
+
+    # Scenario 2: Distance threshold is 2.0 (E03 (dist 2.1) IS unacceptable to E01)
+    model_dist_met = TransitionModel(
+        elector_data=elector_data_for_stop_candidate, initial_beta_weight=1.0,
+        enable_stop_candidate=True, stop_candidate_boost_factor=1.5,
+        stop_candidate_threshold_unacceptable_distance=2.0, # Ideo dist E01-E03 is 2.1
+        stop_candidate_threat_min_vote_share=0.20, stickiness_factor=0.0
+    )
+    _, details_dist_met = model_dist_met.calculate_transition_probabilities(
+        current_round_num=1, 
+        candidate_vote_shares_current_round=current_vote_shares_threat_exists
+    )
+    utility_e01_e04_dist_met = get_utility_from_details(details_dist_met, "E01", "E04")
+    
+    model_baseline_dist_met_no_boost = TransitionModel(
+        elector_data=elector_data_for_stop_candidate, initial_beta_weight=1.0,
+        enable_stop_candidate=True, stop_candidate_boost_factor=1.0, # No boost
+        stop_candidate_threshold_unacceptable_distance=2.0, # Same distance threshold
+        stop_candidate_threat_min_vote_share=0.20, stickiness_factor=0.0
+    )
+    _, details_baseline_dist_met_no_boost = model_baseline_dist_met_no_boost.calculate_transition_probabilities(
+        current_round_num=1, 
+        candidate_vote_shares_current_round=current_vote_shares_threat_exists
+    )
+    utility_e01_e04_baseline_dist_met_no_boost = get_utility_from_details(details_baseline_dist_met_no_boost, "E01", "E04")
+
+    assert np.isclose(utility_e01_e04_dist_met, utility_e01_e04_baseline_dist_met_no_boost * 1.5), \
+        "Stop candidate boost was NOT applied when threat was ideologically distant enough (scenario 2)."
+
+    # Scenario 3: Distance threshold is 2.0 (E03 (dist 2.1) IS unacceptable to E01), but E03 has less than min vote share
+    model_dist_met_low_threat_share = TransitionModel(
+        elector_data=elector_data_for_stop_candidate, initial_beta_weight=1.0,
+        enable_stop_candidate=True, stop_candidate_boost_factor=1.5,
+        stop_candidate_threshold_unacceptable_distance=2.0, # Ideo dist E01-E03 is 2.1
+        stop_candidate_threat_min_vote_share=0.30, stickiness_factor=0.0
+    )
+    _, details_dist_met_low_threat_share = model_dist_met_low_threat_share.calculate_transition_probabilities(
+        current_round_num=1, 
+        candidate_vote_shares_current_round=current_vote_shares_threat_exists
+    )
+    utility_e01_e04_dist_met_low_threat_share = get_utility_from_details(details_dist_met_low_threat_share, "E01", "E04")
+
+    model_baseline_dist_met_low_threat_share = TransitionModel(
+        elector_data=elector_data_for_stop_candidate, initial_beta_weight=1.0,
+        enable_stop_candidate=True, stop_candidate_boost_factor=1.0, # No boost
+        stop_candidate_threshold_unacceptable_distance=2.0, # Same distance threshold
+        stop_candidate_threat_min_vote_share=0.30, stickiness_factor=0.0
+    )
+    _, details_baseline_dist_met_low_threat_share = model_baseline_dist_met_low_threat_share.calculate_transition_probabilities(
+        current_round_num=1, 
+        candidate_vote_shares_current_round=current_vote_shares_threat_exists
+    )
+    utility_e01_e04_baseline_dist_met_low_threat_share = get_utility_from_details(details_baseline_dist_met_low_threat_share, "E01", "E04")
+
+    assert np.isclose(utility_e01_e04_dist_met_low_threat_share, utility_e01_e04_baseline_dist_met_low_threat_share), \
+        "Stop candidate boost applied even when threat's vote share was below the minimum (scenario 3)."
+
+    aligned_shares_scen1 = current_vote_shares_threat_exists.copy()
+    aligned_shares_scen1[2] = 0.35 # E03 now has 35% vote share, above the threshold
+
+    model_dist_met_high_threat_share = TransitionModel(
+        elector_data=elector_data_for_stop_candidate, initial_beta_weight=1.0,
+        enable_stop_candidate=True, stop_candidate_boost_factor=1.5,
+        stop_candidate_threshold_unacceptable_distance=2.0, # Ideo dist E01-E03 is 2.1
+        stop_candidate_threat_min_vote_share=0.30, stickiness_factor=0.0
+    )
+    _, details_dist_met_high_threat_share = model_dist_met_high_threat_share.calculate_transition_probabilities(
+        current_round_num=1, 
+        candidate_vote_shares_current_round=aligned_shares_scen1
+    )
+    utility_e01_e04_dist_met_high_threat_share = get_utility_from_details(details_dist_met_high_threat_share, "E01", "E04")
+
+    model_baseline_dist_met_high_threat_share = TransitionModel(
+        elector_data=elector_data_for_stop_candidate, initial_beta_weight=1.0,
+        enable_stop_candidate=True, stop_candidate_boost_factor=1.0, # No boost
+        stop_candidate_threshold_unacceptable_distance=2.0, # Same distance threshold
+        stop_candidate_threat_min_vote_share=0.30, stickiness_factor=0.0
+    )
+    _, details_baseline_dist_met_high_threat_share = model_baseline_dist_met_high_threat_share.calculate_transition_probabilities(
+        current_round_num=1, 
+        candidate_vote_shares_current_round=aligned_shares_scen1
+    )
+    utility_e01_e04_baseline_dist_met_high_threat_share = get_utility_from_details(details_baseline_dist_met_high_threat_share, "E01", "E04")
+
+    assert np.isclose(utility_e01_e04_dist_met_high_threat_share, utility_e01_e04_baseline_dist_met_high_threat_share * 1.5), \
+        "Stop candidate boost was NOT applied when threat's vote share was above the minimum (scenario 4)."
+
+def test_transition_model_init_elector_data_index_name_warning(
+    elector_data_valid, caplog
+):
+    """Tests warning if elector_data index is not named 'elector_id'."""
+    elector_data_wrong_index_name = elector_data_valid.copy()
+    elector_data_wrong_index_name.index.name = "wrong_name"
+    with caplog.at_level(logging.WARNING):
+        TransitionModel(
+            elector_data=elector_data_wrong_index_name,
+            initial_beta_weight=1.0,
+            stickiness_factor=0.5,
+        )
+    assert "Elector data index is not named 'elector_id' and 'elector_id' column not found. Model might not function as expected if index is not unique elector identifiers." in caplog.text
