@@ -140,240 +140,256 @@ class TransitionModel:
             - 'stickiness_factor': Controls tendency to repeat previous vote (0-1).
             - 'bandwagon_strength': Controls influence of previous round's vote counts (>=0).
             - 'regional_affinity_bonus': Additive bonus for same region.
-            - 'papabile_candidate_bonus': Additive bonus for papabile candidate.
+            - 'papabile_weight_factor': Multiplicative weight for papabile candidate.
     """
 
-    def __init__(self, elector_data: pd.DataFrame, beta_weight: float = 1.0, 
-                 stickiness_factor: float = 0.5, bandwagon_strength: float = 0.0,
-                 regional_affinity_bonus: float = 0.1, papabile_candidate_bonus: float = 0.1):
-        """Initialize the TransitionModel.
+    def __init__(self, elector_data: pd.DataFrame,
+                 initial_beta_weight: float = 1.0,
+                 enable_dynamic_beta: bool = False,
+                 beta_growth_rate: float = 1.05, # Rate per round, e.g., 1.05 for 5% growth
+                 stickiness_factor: float = 0.5,
+                 bandwagon_strength: float = 0.0,
+                 regional_affinity_bonus: float = 0.1,
+                 papabile_weight_factor: float = 1.5,
+                 enable_candidate_fatigue: bool = False,
+                 fatigue_penalty_factor: float = 0.5, # Multiplicative penalty
+                 fatigue_min_vote_share_threshold: float = 0.01,
+                 fatigue_min_rounds_threshold: int = 3,
+                 enable_stop_candidate: bool = False,
+                 stop_candidate_boost_factor: float = 1.5, # Multiplicative boost
+                 stop_candidate_threshold_unacceptable_distance: float = 2.0,
+                 stop_candidate_threat_min_vote_share: float = 0.15
+                 ):
 
-        Args:
-            elector_data: DataFrame with elector profiles, must include 'elector_id' (as index),
-                          'ideology_score', 'region', and 'is_papabile'.
-            beta_weight: Sensitivity to ideological differences. Higher values mean stronger preference for closer candidates.
-            stickiness_factor: Tendency to repeat the previous vote (0 to 1).
-            bandwagon_strength: Strength of the bandwagon effect (>=0).
-            regional_affinity_bonus: Additive bonus if elector and candidate share a region.
-            papabile_candidate_bonus: Additive bonus if the candidate is papabile.
-
-        Raises:
-            ValueError: If required columns are missing or parameters are invalid.
-        """
         if not isinstance(elector_data, pd.DataFrame):
             raise ValueError("elector_data must be a pandas DataFrame.")
-        required_cols = ['ideology_score', 'region', 'is_papabile']
-        for col in required_cols:
-            if col not in elector_data.columns:
-                raise ValueError(f"Elector data must contain a '{col}' column.")
-        if elector_data.index.name != 'elector_id':
-            log.warning("Elector data index is not named 'elector_id'. Ensure IDs are properly handled or set as index.")
-            # Potentially raise ValueError if 'elector_id' is critical as index here.
-            # For now, we assume it's correctly indexed if this check passes or user is warned.
+        if elector_data.empty:
+            raise ValueError("elector_data must be a non-empty DataFrame.")
 
+        self.elector_data = elector_data.copy()
+
+        # Validate numeric parameters
+        if initial_beta_weight < 0:
+            raise ValueError("initial_beta_weight must be non-negative.")
         if not (0 <= stickiness_factor <= 1):
             raise ValueError("stickiness_factor must be between 0 and 1.")
-        if beta_weight < 0:
-            raise ValueError("beta_weight must be non-negative.")
         if bandwagon_strength < 0:
             raise ValueError("bandwagon_strength must be non-negative.")
         if regional_affinity_bonus < 0:
             raise ValueError("regional_affinity_bonus must be non-negative.")
-        if papabile_candidate_bonus < 0:
-            raise ValueError("papabile_candidate_bonus must be non-negative.")
+        if papabile_weight_factor < 0:
+            raise ValueError("papabile_weight_factor must be non-negative.")
+        if beta_growth_rate <= 0:
+             raise ValueError("beta_growth_rate must be positive.")
+        if fatigue_penalty_factor < 0 or fatigue_penalty_factor > 1:
+            raise ValueError("fatigue_penalty_factor must be between 0 and 1.")
+        if fatigue_min_vote_share_threshold < 0 or fatigue_min_vote_share_threshold > 1:
+            raise ValueError("fatigue_min_vote_share_threshold must be between 0 and 1.")
+        if fatigue_min_rounds_threshold < 0:
+            raise ValueError("fatigue_min_rounds_threshold must be non-negative.")
+        if stop_candidate_boost_factor < 1:
+            raise ValueError("stop_candidate_boost_factor must be >= 1.")
+        if stop_candidate_threshold_unacceptable_distance < 0:
+            raise ValueError("stop_candidate_threshold_unacceptable_distance must be non-negative.")
+        if stop_candidate_threat_min_vote_share < 0 or stop_candidate_threat_min_vote_share > 1:
+            raise ValueError("stop_candidate_threat_min_vote_share must be between 0 and 1.")
 
-        self.elector_data_full = elector_data.copy() # Store full data for region/papabile access
-        self.elector_ideologies = self.elector_data_full['ideology_score'].values.astype(float)
-        self.candidate_names: List[str] = self.elector_data_full.index.tolist()
-        self.candidate_ideologies: np.ndarray = self.elector_ideologies
-        self.candidate_regions: np.ndarray = self.elector_data_full['region'].values
-        self.candidate_is_papabile: np.ndarray = self.elector_data_full['is_papabile'].values.astype(bool)
-        
-        self.num_electors = len(self.elector_ideologies)
-        self.num_candidates = len(self.candidate_names)
+        self.initial_beta_weight = initial_beta_weight
+        self.enable_dynamic_beta = enable_dynamic_beta
+        self.beta_growth_rate = beta_growth_rate
+        self.stickiness_factor = stickiness_factor
+        self.bandwagon_strength = bandwagon_strength
+        self.regional_affinity_bonus = regional_affinity_bonus
+        self.papabile_weight_factor = papabile_weight_factor
+        self.enable_candidate_fatigue = enable_candidate_fatigue
+        self.fatigue_penalty_factor = fatigue_penalty_factor
+        self.fatigue_min_vote_share_threshold = fatigue_min_vote_share_threshold
+        self.fatigue_min_rounds_threshold = fatigue_min_rounds_threshold
+        self.enable_stop_candidate = enable_stop_candidate
+        self.stop_candidate_boost_factor = stop_candidate_boost_factor
+        self.stop_candidate_threshold_unacceptable_distance = stop_candidate_threshold_unacceptable_distance
+        self.stop_candidate_threat_min_vote_share = stop_candidate_threat_min_vote_share
 
-        self.beta_weight = float(beta_weight)
-        self.stickiness_factor = float(stickiness_factor)
-        self.bandwagon_strength = float(bandwagon_strength)
-        self.regional_affinity_bonus = float(regional_affinity_bonus)
-        self.papabile_candidate_bonus = float(papabile_candidate_bonus)
+        self.effective_beta_weight = initial_beta_weight
 
-        # Precompute base ideological preference scores (electors x all candidates)
-        # These will be further adjusted by region and papabile status per call.
-        self.base_ideological_pref_scores = np.exp(-self.beta_weight * np.abs(self.elector_ideologies[:, np.newaxis] - self.candidate_ideologies[np.newaxis, :]))
-        
-        log.debug(f"TransitionModel initialized with {self.num_electors} electors and {self.num_candidates} potential candidates.")
-        log.debug(f"Params: beta={self.beta_weight}, stickiness={self.stickiness_factor}, bandwagon={self.bandwagon_strength}, region_bonus={self.regional_affinity_bonus}, papabile_bonus={self.papabile_candidate_bonus}")
+        required_cols = ['ideology_score', 'region', 'is_papabile']
+        if not all(col in self.elector_data.columns for col in required_cols):
+            missing_cols = [col for col in required_cols if col not in self.elector_data.columns]
+            raise ValueError(f"elector_data must contain '{', '.join(missing_cols)}' column(s).")
 
+        # Standardize elector_id as index
+        if 'elector_id' in self.elector_data.columns:
+            if self.elector_data['elector_id'].duplicated().any():
+                raise ValueError("Duplicate values found in 'elector_id' column.")
+            self.elector_data = self.elector_data.set_index('elector_id', drop=True)
+        elif self.elector_data.index.name != 'elector_id':
+            log.warning("Elector data index is not named 'elector_id' and 'elector_id' column not found. Model might not function as expected if index is not unique elector identifiers.")
+            # Proceeding with caution, assuming index is intended to be elector_id
 
-    def _get_effective_candidate_data(self, active_candidates: Optional[List[str]] = None) -> Tuple[List[str], np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Helper to get data for effective (active or all) candidates."""
-        if active_candidates:
-            try:
-                active_candidate_indices = [self.candidate_names.index(name) for name in active_candidates]
-            except ValueError as e:
-                missing_candidate = str(e).split("'", 2)[1]
-                log.error(f"Error: Candidate '{missing_candidate}' from active_candidates not found in model's master list.")
-                raise ValueError(f"Active candidate '{missing_candidate}' not in master candidate list.") from e
-            
-            effective_candidate_names = [self.candidate_names[i] for i in active_candidate_indices]
-            effective_candidate_ideologies = self.candidate_ideologies[active_candidate_indices]
-            effective_candidate_regions = self.candidate_regions[active_candidate_indices]
-            effective_candidate_is_papabile = self.candidate_is_papabile[active_candidate_indices]
-            # Slice the base ideological preferences for these active candidates
-            effective_base_ideological_pref_scores = self.base_ideological_pref_scores[:, active_candidate_indices]
-        else:
-            effective_candidate_names = self.candidate_names
-            effective_candidate_ideologies = self.candidate_ideologies
-            effective_candidate_regions = self.candidate_regions
-            effective_candidate_is_papabile = self.candidate_is_papabile
-            effective_base_ideological_pref_scores = self.base_ideological_pref_scores
-        
-        return effective_candidate_names, effective_candidate_ideologies, effective_candidate_regions, effective_candidate_is_papabile, effective_base_ideological_pref_scores
+        self.num_electors = len(self.elector_data)
+        self.num_candidates = len(self.elector_data)
+        self.candidate_data = self.elector_data.copy()
+        self.candidate_ids = self.candidate_data.index.tolist()
 
-    def calculate_transition_probabilities(
-        self,
-        elector_data_runtime: pd.DataFrame, # Full elector data available at runtime for current state
-        current_votes: Optional[Dict[str, Union[str, int]]] = None, # elector_id -> candidate_id
-        active_candidates: Optional[List[str]] = None
-    ) -> Tuple[np.ndarray, List[str]]:
-        """Calculates the probability of each elector voting for each (active) candidate.
+        # Pre-calculate attributes for performance
+        self.elector_regions = self.elector_data['region'].values
+        self.candidate_regions = self.candidate_data['region'].values
+        self.elector_ideologies = self.elector_data['ideology_score'].values
+        self.candidate_ideologies = self.candidate_data['ideology_score'].values
+        self.candidate_is_papabile = self.candidate_data['is_papabile'].astype(bool).values
 
-        Combines ideological preference, regional affinity, papabile status, vote stickiness, and bandwagon effect.
-
-        Args:
-            elector_data_runtime: DataFrame of all electors in the simulation (index 'elector_id', cols 'region', 'is_papabile').
-                                  Used to get current region of electors if needed, though self.elector_data_full is primary.
-            current_votes: Dictionary mapping elector_id to their chosen candidate_id (str or int) in the previous round.
-                           If None (e.g., first round), stickiness and bandwagon are not applied.
-            active_candidates: Optional list of candidate_ids (str). If provided, probabilities are calculated
-                               only for these candidates. If None, all candidates are considered.
-
-        Returns:
-            A tuple (prob_matrix, effective_candidate_names):
-            - prob_matrix: A 2D numpy array (num_electors x num_effective_candidates) where each row sums to 1.
-            - effective_candidate_names: List of candidate names corresponding to columns in prob_matrix.
-        """
-        
-        effective_candidate_names, _, effective_candidate_regions, \
-        effective_candidate_is_papabile, base_pref_scores = self._get_effective_candidate_data(active_candidates)
-        
-        num_effective_candidates = len(effective_candidate_names)
-        if num_effective_candidates == 0:
-            log.warning("No effective candidates to calculate transition probabilities for.")
+    def calculate_transition_probabilities(self, previous_round_votes: pd.Series = None, 
+                                         current_round_num: int = 1,
+                                         fatigued_candidate_indices: set = None,
+                                         candidate_vote_shares_current_round: np.ndarray = None):
+        if self.num_electors == 0 or self.num_candidates == 0:
+            log.warning("No electors or candidates to calculate transition probabilities for.")
             return np.array([]).reshape(self.num_electors, 0), []
 
-        # Start with base ideological preference scores (electors x effective_candidates)
-        current_pref_scores = base_pref_scores.copy()
+        # A. Dynamic Beta Calculation
+        if self.enable_dynamic_beta:
+            current_dynamic_beta = self.initial_beta_weight * (self.beta_growth_rate ** (current_round_num - 1))
+        else:
+            current_dynamic_beta = self.initial_beta_weight
+        # log.debug(f"Round {current_round_num}, Dynamic Beta: {current_dynamic_beta:.2f}")
 
-        # Apply regional affinity bonus
-        # Elector regions are from self.elector_data_full.index which maps to self.elector_data_full['region']
-        elector_regions = self.elector_data_full['region'].values # Shape: (num_electors,)
-        # Compare each elector's region with each *effective* candidate's region
-        # same_region_matrix[i, j] is True if elector i and (effective) candidate j have same region
-        same_region_matrix = (elector_regions[:, np.newaxis] == effective_candidate_regions[np.newaxis, :])
+        # 1. Ideological Preference Scores
+        ideological_distances = np.abs(self.elector_ideologies[:, np.newaxis] - self.candidate_ideologies)
+        current_pref_scores = np.exp(-current_dynamic_beta * ideological_distances)
+
+        # 2. Apply Multiplicative Papabile Weight
+        papabile_candidates = np.where(self.candidate_is_papabile)[0]
+        if papabile_candidates.size > 0:
+            current_pref_scores[:, papabile_candidates] *= self.papabile_weight_factor
+
+        # 3. Apply Additive Regional Bonus
+        # Create a boolean matrix for shared regions
+        same_region_matrix = (self.elector_regions[:, np.newaxis] == self.candidate_regions)
         current_pref_scores[same_region_matrix] += self.regional_affinity_bonus
-
-        # Apply papabile candidate bonus
-        # This bonus applies if the *effective_candidate* is papabile.
-        # effective_candidate_is_papabile is a boolean array of shape (num_effective_candidates,)
-        current_pref_scores[:, effective_candidate_is_papabile] += self.papabile_candidate_bonus
         
-        # --- Stickiness and Bandwagon (if not first round) ---
-        if current_votes is not None and self.num_electors > 0:
-            # Stickiness: Increase preference for previously chosen candidate
-            for elector_idx, elector_id in enumerate(self.elector_data_full.index):
-                previous_vote_candidate_id = current_votes.get(str(elector_id)) # Ensure elector_id is string for dict key
-                if previous_vote_candidate_id is not None:
+        # 4. Apply Additive Bandwagon Effect
+        if self.bandwagon_strength > 0 and previous_round_votes is not None:
+            # Ensure previous_round_votes is a Series for consistent handling
+            if isinstance(previous_round_votes, dict):
+                previous_round_votes_series = pd.Series(previous_round_votes, dtype=object)
+            elif isinstance(previous_round_votes, pd.Series):
+                previous_round_votes_series = previous_round_votes
+            else:
+                # If not a dict or Series, log a warning and treat as empty to avoid errors
+                logging.warning(f"Unsupported type for previous_round_votes in bandwagon: {type(previous_round_votes)}. Skipping effect.")
+                previous_round_votes_series = pd.Series(dtype=object) # Empty series
+
+            if not previous_round_votes_series.empty:
+                valid_previous_votes = previous_round_votes_series[previous_round_votes_series.isin(self.candidate_ids)]
+
+                if not valid_previous_votes.empty:
+                    vote_counts = valid_previous_votes.value_counts()
+                    max_votes = vote_counts.max() if not vote_counts.empty else 1
+                    if max_votes == 0: max_votes = 1
+
+                    bandwagon_bonuses_aligned = pd.Series(0.0, index=self.candidate_ids)
+                    for candidate_id, count in vote_counts.items():
+                        if candidate_id in self.candidate_ids:
+                            bonus = (count / max_votes) * self.bandwagon_strength
+                            bandwagon_bonuses_aligned[candidate_id] = bonus
+                    
+                    current_pref_scores += bandwagon_bonuses_aligned.values
+    
+        # 5. Apply Multiplicative Stickiness Factor
+        if previous_round_votes is not None and self.stickiness_factor > 0:
+            # Identify electors who voted in the previous round and their chosen candidate
+            # Assuming previous_round_votes is a Series with elector_id as index and candidate_id as value
+            for elector_id_prev_vote, chosen_candidate_id_prev_vote in previous_round_votes.items():
+                if elector_id_prev_vote in self.elector_data.index and chosen_candidate_id_prev_vote in self.candidate_ids:
+                    elector_idx = self.elector_data.index.get_loc(elector_id_prev_vote)
                     try:
-                        # Find index of previously voted candidate among effective candidates
-                        previous_vote_cand_idx_effective = effective_candidate_names.index(str(previous_vote_candidate_id))
-                        current_pref_scores[elector_idx, previous_vote_cand_idx_effective] *= (1 + self.stickiness_factor)
+                        # Ensure chosen_candidate_id_prev_vote is compatible with candidate_ids type (e.g. both str or int)
+                        chosen_candidate_idx = self.candidate_ids.index(chosen_candidate_id_prev_vote)
+                        current_pref_scores[elector_idx, chosen_candidate_idx] *= (1 + self.stickiness_factor)
                     except ValueError:
-                        # Previous candidate not in active list, stickiness doesn't apply to them
+                        log.warning(f"Stickiness: Previously chosen candidate ID '{chosen_candidate_id_prev_vote}' not found in current candidate_ids list.")
                         pass 
 
-            # Bandwagon effect: Increase preference based on overall vote counts for candidates
-            if self.bandwagon_strength > 0 and num_effective_candidates > 0:
-                # Calculate vote counts for each effective candidate from current_votes
-                vote_counts = np.zeros(num_effective_candidates, dtype=float)
-                for elector_id_key, voted_candidate_id_val in current_votes.items():
-                    try:
-                        voted_cand_idx_effective = effective_candidate_names.index(str(voted_candidate_id_val))
-                        vote_counts[voted_cand_idx_effective] += 1
-                    except ValueError:
-                        pass # Vote for a candidate not in the current active list
-                
-                # Normalize vote counts to get a bandwagon score (0 to 1)
-                if np.sum(vote_counts) > 0:
-                    bandwagon_scores = vote_counts / np.sum(vote_counts) 
-                    current_pref_scores += self.bandwagon_strength * bandwagon_scores[np.newaxis, :]
-        
-        # --- Final Normalization ---
-        # Ensure no self-voting (diagonal of original square matrix, if all candidates are electors)
-        # If active_candidates is a subset, self-voting might not be on the diagonal of current_pref_scores.
-        # Need to identify if an elector IS one of the active_candidates.
-        for elector_idx, elector_id_str in enumerate(self.elector_data_full.index.astype(str)):
-            if elector_id_str in effective_candidate_names:
-                cand_idx_in_effective = effective_candidate_names.index(elector_id_str)
-                current_pref_scores[elector_idx, cand_idx_in_effective] = 0
-        
+        # Ensure scores are not negative after additive bonuses before fatigue/stop candidate logic
+        current_pref_scores = np.maximum(current_pref_scores, 0)
+
+        # C. Candidate Fatigue Logic
+        if self.enable_candidate_fatigue and fatigued_candidate_indices:
+            fatigued_indices_list = list(fatigued_candidate_indices) 
+            if fatigued_indices_list: 
+                # log.debug(f"Applying fatigue penalty to candidates: {fatigued_indices_list}")
+                current_pref_scores[:, fatigued_indices_list] *= self.fatigue_penalty_factor
+
+        base_pref_scores_after_fatigue = current_pref_scores.copy()
+
+        # D. Stop Candidate Logic
+        # Requires candidate_vote_shares_current_round and elector/candidate ideologies
+        if self.enable_stop_candidate and candidate_vote_shares_current_round is not None:
+            # log.debug(f"Applying Stop Candidate Logic. Threshold dist: {self.stop_candidate_threshold_unacceptable_distance}, threat share: {self.stop_candidate_threat_min_vote_share}")
+            for e_idx in range(self.num_electors):
+                elector_ideology = self.elector_ideologies[e_idx]
+                unacceptable_k_indices = np.where(
+                    np.abs(elector_ideology - self.candidate_ideologies) > self.stop_candidate_threshold_unacceptable_distance
+                )[0]
+
+                if unacceptable_k_indices.size > 0:
+                    threatening_unacceptable_indices = [
+                        k_idx for k_idx in unacceptable_k_indices 
+                        if candidate_vote_shares_current_round[k_idx] > self.stop_candidate_threat_min_vote_share
+                    ]
+
+                    if threatening_unacceptable_indices: 
+                        # log.debug(f"Elector {self.elector_data.index[e_idx]} finds candidates {threatening_unacceptable_indices} threatening.")
+                        potential_blockers_indices = np.array(
+                            [m_idx for m_idx in range(self.num_candidates) if m_idx not in unacceptable_k_indices]
+                        )
+                        
+                        if potential_blockers_indices.size > 0:
+                            # Apply boost to all potential blockers
+                            base_pref_scores_after_fatigue[e_idx, potential_blockers_indices] *= self.stop_candidate_boost_factor
+            current_pref_scores = base_pref_scores_after_fatigue 
+
+        # E. Set diagonal to zero (no self-votes)
+        np.fill_diagonal(current_pref_scores, 0) # AI: Ensure no self-votes
+
+        # Handle cases where all preference scores for an elector might be zero
+        # If all scores for an elector are zero (e.g., due to extreme fatigue penalties or no viable candidates),
+        # assign a tiny uniform probability to prevent NaN in normalization and allow random choice.
+        for i in range(self.num_electors):
+            if np.sum(current_pref_scores[i, :]) == 0:
+                # log.debug(f"All preference scores are zero for elector {self.elector_data.index[i]}. Assigning uniform probability.")
+                current_pref_scores[i, :] = 1e-9 
+
+        # F. Normalization to Probabilities
         row_sums = current_pref_scores.sum(axis=1, keepdims=True)
-        prob_matrix = np.zeros_like(current_pref_scores)
-        
-        non_zero_sum_rows = (row_sums > 1e-9).flatten()
-        if np.any(non_zero_sum_rows):
-            # Ensure sums are not zero before division
-            safe_sums = np.where(row_sums[non_zero_sum_rows] == 0, 1, row_sums[non_zero_sum_rows])
-            prob_matrix[non_zero_sum_rows, :] = current_pref_scores[non_zero_sum_rows, :] / safe_sums
+        probabilities = current_pref_scores / row_sums
 
-        # For electors with zero sum of preferences (e.g., all candidates filtered out or infinitely distant)
-        # assign uniform probability if there are candidates, otherwise leave as zeros.
-        zero_sum_rows = ~non_zero_sum_rows
-        if np.any(zero_sum_rows) and num_effective_candidates > 0:
-            num_votable_for_row = np.sum(current_pref_scores[zero_sum_rows, :] > 0, axis=1, keepdims=True)
-            # Create a mask for rows that truly have no positive preference scores left
-            truly_zero_preference_rows = (num_votable_for_row == 0).flatten()
+        details = []
+        for e_idx in range(self.num_electors):
+            candidate_details_for_elector = []
+            for c_idx in range(self.num_candidates):
+                candidate_details_for_elector.append({
+                    'candidate_id': self.candidate_ids[c_idx],
+                    'final_utility_before_softmax': current_pref_scores[e_idx, c_idx]
+                })
             
-            if np.any(truly_zero_preference_rows):
-                indices_truly_zero = np.where(zero_sum_rows)[0][truly_zero_preference_rows]
-                log.warning(f"Electors at indices {indices_truly_zero} have zero preference for all {num_effective_candidates} active candidates. Assigning uniform probability.")
-                uniform_prob = 1.0 / num_effective_candidates
-                prob_matrix[indices_truly_zero, :] = uniform_prob
-                 # Re-apply self-vote zeroing for these uniform rows if elector is a candidate
-                for elector_idx in indices_truly_zero:
-                    elector_id_str = self.elector_data_full.index[elector_idx].astype(str)
-                    if elector_id_str in effective_candidate_names:
-                        cand_idx_in_effective = effective_candidate_names.index(elector_id_str)
-                        prob_matrix[elector_idx, cand_idx_in_effective] = 0
-                        # Renormalize this specific row if a self-vote was zeroed out
-                        if num_effective_candidates > 1:
-                            row_sum_after_self_vote_fix = prob_matrix[elector_idx, :].sum()
-                            if row_sum_after_self_vote_fix > 1e-9:
-                                prob_matrix[elector_idx, :] /= row_sum_after_self_vote_fix
-                            else: # All other candidates also had zero prob, revert to uniform among N-1
-                                prob_matrix[elector_idx, :] = 1.0 / (num_effective_candidates -1)
-                                prob_matrix[elector_idx, cand_idx_in_effective] = 0 # re-set self to 0
-                        elif num_effective_candidates == 1: # Only self as candidate, prob must be 0
-                             prob_matrix[elector_idx, cand_idx_in_effective] = 0
+            detail_entry = {
+                'round': current_round_num,
+                'elector_id': self.elector_data.index[e_idx],
+                'effective_beta_weight': current_dynamic_beta,
+                'candidate_details': candidate_details_for_elector,
+                'probabilities': probabilities[e_idx, :].tolist(),
+                'fatigued_candidates_in_round': list(fatigued_candidate_indices) if fatigued_candidate_indices else []
+            }
+            details.append(detail_entry)
 
-        # Final validation of row sums
-        final_sums = prob_matrix.sum(axis=1)
-        # Allow sums to be 0 if there are no effective candidates an elector can vote for (e.g. N=1 and self-vote=0)
-        valid_sums = np.isclose(final_sums, 1.0, rtol=1e-5, atol=1e-7) | \
-                     (np.isclose(final_sums, 0.0, atol=1e-7) & (num_effective_candidates <=1 )) # Or if only 1 candidate and it's self
-        
-        if not np.all(valid_sums):
-            invalid_row_indices = np.where(~valid_sums)[0]
-            problematic_elector_ids_actual = self.elector_data_full.index[invalid_row_indices].tolist()
-            log.error(f"TransitionModel: Probability matrix normalization failed for electors: {problematic_elector_ids_actual} (Indices: {invalid_row_indices})")
-            log.error(f"Problematic sums: {final_sums[invalid_row_indices]}")
-            log.error(f"Problematic prob_matrix rows:\n{prob_matrix[invalid_row_indices]}")
-            # raise ValueError("Transition probability matrix rows do not sum correctly to 1.0 or 0.0.")
-            # For now, log error but don't raise, to allow inspection if this is hit. Strict check later.
+        return probabilities, details
 
-        return prob_matrix, effective_candidate_names
+    def get_candidate_ids(self):
+        return self.candidate_ids
 
+    def get_elector_data(self):
+        return self.elector_data
 
 # Example usage (simplified):
 # elector_data_example = pd.DataFrame({
