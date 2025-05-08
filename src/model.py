@@ -140,12 +140,12 @@ class TransitionModel:
             - 'stickiness_factor': Controls tendency to repeat previous vote (0-1).
             - 'bandwagon_strength': Controls influence of previous round's vote counts (>=0).
             - 'regional_affinity_bonus': Additive bonus for same region.
-            - 'papabile_candidate_bonus': Additive bonus for papabile candidate.
+            - 'papabile_weight_factor': Multiplicative weight for papabile candidate.
     """
 
     def __init__(self, elector_data: pd.DataFrame, beta_weight: float = 1.0, 
                  stickiness_factor: float = 0.5, bandwagon_strength: float = 0.0,
-                 regional_affinity_bonus: float = 0.1, papabile_candidate_bonus: float = 0.1):
+                 regional_affinity_bonus: float = 0.1, papabile_weight_factor: float = 1.5):
         """Initialize the TransitionModel.
 
         Args:
@@ -155,7 +155,7 @@ class TransitionModel:
             stickiness_factor: Tendency to repeat the previous vote (0 to 1).
             bandwagon_strength: Strength of the bandwagon effect (>=0).
             regional_affinity_bonus: Additive bonus if elector and candidate share a region.
-            papabile_candidate_bonus: Additive bonus if the candidate is papabile.
+            papabile_weight_factor: Multiplicative weight factor if the candidate is papabile (e.g., 1.5 for 50% boost).
 
         Raises:
             ValueError: If required columns are missing or parameters are invalid.
@@ -179,8 +179,8 @@ class TransitionModel:
             raise ValueError("bandwagon_strength must be non-negative.")
         if regional_affinity_bonus < 0:
             raise ValueError("regional_affinity_bonus must be non-negative.")
-        if papabile_candidate_bonus < 0:
-            raise ValueError("papabile_candidate_bonus must be non-negative.")
+        if papabile_weight_factor < 0:
+            raise ValueError("papabile_weight_factor must be non-negative.")
 
         self.elector_data_full = elector_data.copy() # Store full data for region/papabile access
         self.elector_ideologies = self.elector_data_full['ideology_score'].values.astype(float)
@@ -196,14 +196,14 @@ class TransitionModel:
         self.stickiness_factor = float(stickiness_factor)
         self.bandwagon_strength = float(bandwagon_strength)
         self.regional_affinity_bonus = float(regional_affinity_bonus)
-        self.papabile_candidate_bonus = float(papabile_candidate_bonus)
+        self.papabile_weight_factor = float(papabile_weight_factor)
 
         # Precompute base ideological preference scores (electors x all candidates)
         # These will be further adjusted by region and papabile status per call.
         self.base_ideological_pref_scores = np.exp(-self.beta_weight * np.abs(self.elector_ideologies[:, np.newaxis] - self.candidate_ideologies[np.newaxis, :]))
         
         log.debug(f"TransitionModel initialized with {self.num_electors} electors and {self.num_candidates} potential candidates.")
-        log.debug(f"Params: beta={self.beta_weight}, stickiness={self.stickiness_factor}, bandwagon={self.bandwagon_strength}, region_bonus={self.regional_affinity_bonus}, papabile_bonus={self.papabile_candidate_bonus}")
+        log.debug(f"Params: beta={self.beta_weight}, stickiness={self.stickiness_factor}, bandwagon={self.bandwagon_strength}, region_bonus={self.regional_affinity_bonus}, papabile_factor={self.papabile_weight_factor}")
 
 
     def _get_effective_candidate_data(self, active_candidates: Optional[List[str]] = None) -> Tuple[List[str], np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -264,36 +264,26 @@ class TransitionModel:
             return np.array([]).reshape(self.num_electors, 0), []
 
         # Start with base ideological preference scores (electors x effective_candidates)
-        current_pref_scores = base_pref_scores.copy()
+        current_pref_scores = base_pref_scores.copy() # 1. Ideology
 
-        # Apply regional affinity bonus
+        # Apply papabile candidate weight factor (Multiplicative)
+        # This weight applies if the *effective_candidate* is papabile.
+        # effective_candidate_is_papabile is a boolean array of shape (num_effective_candidates,)
+        current_pref_scores[:, effective_candidate_is_papabile] *= self.papabile_weight_factor # 2. Papabile
+
+        # Apply regional affinity bonus (Additive)
         # Elector regions are from self.elector_data_full.index which maps to self.elector_data_full['region']
         elector_regions = self.elector_data_full['region'].values # Shape: (num_electors,)
         # Compare each elector's region with each *effective* candidate's region
         # same_region_matrix[i, j] is True if elector i and (effective) candidate j have same region
         same_region_matrix = (elector_regions[:, np.newaxis] == effective_candidate_regions[np.newaxis, :])
-        current_pref_scores[same_region_matrix] += self.regional_affinity_bonus
-
-        # Apply papabile candidate bonus
-        # This bonus applies if the *effective_candidate* is papabile.
-        # effective_candidate_is_papabile is a boolean array of shape (num_effective_candidates,)
-        current_pref_scores[:, effective_candidate_is_papabile] += self.papabile_candidate_bonus
+        current_pref_scores[same_region_matrix] += self.regional_affinity_bonus # 3. Regional
         
-        # --- Stickiness and Bandwagon (if not first round) ---
+        # --- Dynamic Effects: Bandwagon and Stickiness (if not first round) ---
         if current_votes is not None and self.num_electors > 0:
-            # Stickiness: Increase preference for previously chosen candidate
-            for elector_idx, elector_id in enumerate(self.elector_data_full.index):
-                previous_vote_candidate_id = current_votes.get(str(elector_id)) # Ensure elector_id is string for dict key
-                if previous_vote_candidate_id is not None:
-                    try:
-                        # Find index of previously voted candidate among effective candidates
-                        previous_vote_cand_idx_effective = effective_candidate_names.index(str(previous_vote_candidate_id))
-                        current_pref_scores[elector_idx, previous_vote_cand_idx_effective] *= (1 + self.stickiness_factor)
-                    except ValueError:
-                        # Previous candidate not in active list, stickiness doesn't apply to them
-                        pass 
-
-            # Bandwagon effect: Increase preference based on overall vote counts for candidates
+            
+            # 4. Bandwagon effect (Additive)
+            # Applied before stickiness, to the scores that already include ideology, papabile, and regional effects.
             if self.bandwagon_strength > 0 and num_effective_candidates > 0:
                 # Calculate vote counts for each effective candidate from current_votes
                 vote_counts = np.zeros(num_effective_candidates, dtype=float)
@@ -307,7 +297,23 @@ class TransitionModel:
                 # Normalize vote counts to get a bandwagon score (0 to 1)
                 if np.sum(vote_counts) > 0:
                     bandwagon_scores = vote_counts / np.sum(vote_counts) 
+                    # Apply bandwagon effect to all electors for candidates who received votes
                     current_pref_scores += self.bandwagon_strength * bandwagon_scores[np.newaxis, :]
+            
+            # 5. Stickiness (Multiplicative)
+            # Applied after ideology, papabile, regional, and bandwagon effects.
+            # Increase preference for previously chosen candidate for each elector.
+            for elector_idx, elector_id in enumerate(self.elector_data_full.index):
+                previous_vote_candidate_id = current_votes.get(str(elector_id)) # Ensure elector_id is string for dict key
+                if previous_vote_candidate_id is not None:
+                    try:
+                        # Find index of previously voted candidate among effective candidates
+                        previous_vote_cand_idx_effective = effective_candidate_names.index(str(previous_vote_candidate_id))
+                        # Apply stickiness factor
+                        current_pref_scores[elector_idx, previous_vote_cand_idx_effective] *= (1 + self.stickiness_factor)
+                    except ValueError:
+                        # Previous candidate not in active list, stickiness doesn't apply to them for this round
+                        pass 
         
         # --- Final Normalization ---
         # Ensure no self-voting (diagonal of original square matrix, if all candidates are electors)
