@@ -606,3 +606,58 @@ def main():
 # Call main function when script is executed
 if __name__ == "__main__":
     main()
+
+
+class ElectorDataIngester:
+    """Handles loading and basic preparation of elector data from a CSV file."""
+
+    def __init__(self, elector_data_file: str):
+        """
+        Initializes the ElectorDataIngester with the path to the elector data file.
+
+        Args:
+            elector_data_file: The path to the CSV file containing elector data.
+        """
+        self.elector_data_file_path = Path(elector_data_file)
+        # Ensure log is available if this class is instantiated outside of main()
+        self.log = logging.getLogger(__name__ + ".ElectorDataIngester") 
+
+    def load_and_prepare_data(self) -> pd.DataFrame:
+        """
+        Loads elector data from the CSV file specified during initialization,
+        sets 'elector_id' as the index, and returns the DataFrame.
+
+        Returns:
+            A pandas DataFrame with elector data, or an empty DataFrame if loading fails.
+        """
+        self.log.info(f"Attempting to load elector data from: {self.elector_data_file_path}")
+        if not self.elector_data_file_path.exists():
+            self.log.error(f"Elector data file not found: {self.elector_data_file_path}")
+            return pd.DataFrame()
+
+        try:
+            df = pd.read_csv(self.elector_data_file_path)
+            if df.empty:
+                self.log.warning(f"Elector data file is empty: {self.elector_data_file_path}")
+                return pd.DataFrame()
+
+            # Standardize elector_id: ensure it exists and set as index
+            if 'elector_id' not in df.columns:
+                if 'gc_id' in df.columns: # Fallback to gc_id if elector_id is missing
+                    self.log.warning("'elector_id' column not found, using 'gc_id' as elector_id.")
+                    df['elector_id'] = df['gc_id']
+                else:
+                    self.log.error("'elector_id' (and 'gc_id' fallback) column not found in elector data.")
+                    return pd.DataFrame() # Cannot proceed without an ID
+            
+            df['elector_id'] = df['elector_id'].astype(str) # Ensure elector_id is string
+            df.set_index('elector_id', inplace=True)
+            
+            self.log.info(f"Successfully loaded and prepared {len(df)} records from {self.elector_data_file_path}.")
+            return df
+        except pd.errors.EmptyDataError:
+            self.log.error(f"Elector data file is empty or malformed (EmptyDataError): {self.elector_data_file_path}")
+            return pd.DataFrame()
+        except Exception as e:
+            self.log.error(f"An unexpected error occurred while loading elector data from {self.elector_data_file_path}: {e}", exc_info=True)
+            return pd.DataFrame()

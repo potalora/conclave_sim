@@ -36,20 +36,18 @@ MAX_LLM_RETRIES = 3
 RETRY_SLEEP_BASE_SECONDS = 5
 
 # --- API Key Configuration ---
-try:
-    # AI: Using os.getenv for safer access, allowing None if not set
-    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-    if not GOOGLE_API_KEY:
-        raise ValueError("GOOGLE_API_KEY environment variable not set.")
-    genai.configure(api_key=GOOGLE_API_KEY)
-    print("Google AI API Key configured successfully.")
-except ValueError as e:
-    print("Configuration Error: %s" % e, file=sys.stderr)
-    print("Please set the GOOGLE_API_KEY environment variable and try again.", file=sys.stderr)
-    sys.exit(1)
-except Exception as e:
-    print("Unexpected Error configuring Google AI SDK: %s" % e, file=sys.stderr)
-    sys.exit(1)
+# AI: Using os.getenv for safer access, allowing None if not set
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+if GOOGLE_API_KEY:
+    try:
+        genai.configure(api_key=GOOGLE_API_KEY)
+        log.info("Google AI API Key configured successfully.")
+    except Exception as e:
+        log.error(f"Error configuring Google AI SDK with provided GOOGLE_API_KEY: {e}", exc_info=True)
+        # LLM features will likely fail if this occurs.
+else:
+    log.warning("GOOGLE_API_KEY environment variable not set. LLM-dependent features will be unavailable.")
 
 # --- Helper Functions ---
 
