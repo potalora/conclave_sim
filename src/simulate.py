@@ -1,12 +1,20 @@
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple, Optional, Any, Set
+from collections import Counter # Added missing import
+import argparse
+import json
+import logging
+import multiprocessing
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
 
 from src.model import TransitionModel
 from src.ingest import ElectorDataIngester
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
+logging.basicConfig(level=logging.INFO, # Changed back from logging.DEBUG
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 log = logging.getLogger(__name__)
 worker_log = logging.getLogger(f"{__name__}.worker") # Use a more specific name for worker logs
@@ -27,11 +35,9 @@ def _run_single_simulation_worker(sim_id: int, elector_data_full: pd.DataFrame, 
                                 enable_candidate_fatigue: bool,
                                 fatigue_threshold_rounds: int,
                                 fatigue_vote_share_threshold: float,
-                                fatigue_penalty_factor: float,
+                                # fatigue_penalty_factor is in model_params
                                 fatigue_top_n_immune: int,
-                                enable_stop_candidate: bool,
-                                stop_candidate_threat_min_vote_share: float,
-                                # Beta params already in model_params via initial_beta_weight etc.
+                                enable_stop_candidate: bool
                                 ) -> Dict[str, Any]:
     if verbose:
         worker_log.setLevel(logging.DEBUG)
@@ -65,7 +71,7 @@ def _run_single_simulation_worker(sim_id: int, elector_data_full: pd.DataFrame, 
         fatigued_candidate_indices_set: Set[int] = set()
         
         previous_round_vote_shares_for_model = np.zeros(num_candidates)
-        if candidate_vote_shares_history: # Use shares history for stop_candidate logic if available
+        if candidate_vote_shares_history: # Use shares history for stop-cand for now
             previous_round_vote_shares_for_model = candidate_vote_shares_history[-1]
         elif candidate_vote_counts_history: # Fallback to calculating from counts history
             last_round_counts_dict = candidate_vote_counts_history[-1]
@@ -116,8 +122,7 @@ def _run_single_simulation_worker(sim_id: int, elector_data_full: pd.DataFrame, 
             previous_round_votes=final_vote_counts, # This is from the *previous* round
             current_round_num=current_round_num,
             fatigued_candidate_indices=fatigued_candidate_indices_set,
-            candidate_vote_shares_current_round=previous_round_vote_shares_for_model, # Using prev round shares for stop-cand for now
-            stop_candidate_threat_min_vote_share=stop_candidate_threat_min_vote_share 
+            candidate_vote_shares_current_round=previous_round_vote_shares_for_model
         )
 
         if probabilities.size == 0:
@@ -134,11 +139,16 @@ def _run_single_simulation_worker(sim_id: int, elector_data_full: pd.DataFrame, 
         current_candidate_to_prob_idx_map = {cand_id: i for i, cand_id in enumerate(effective_candidates_this_round)}
 
         for elector_idx in range(num_electors):
-            # Ensure probability row corresponds to the number of *currently effective* candidates
-            prob_row = probabilities[elector_idx, :len(effective_candidates_this_round)]
+            # AI: FIX - Ensure probability row corresponds to the number of *currently effective* candidates
+            # and verify that it sums to 1.0
+            num_effective = len(effective_candidates_this_round)
+            prob_row = probabilities[elector_idx, :num_effective]
+            
+            # Double-check that probabilities sum to 1.0 (or very close to it) using np.isclose
             if not np.isclose(np.sum(prob_row), 1.0):
                  worker_log.warning(f"[Sim {sim_id}] Probabilities for elector {elector_ids[elector_idx]} do not sum to 1: {np.sum(prob_row)}. Re-normalizing.")
-                 prob_row = prob_row / np.sum(prob_row) if np.sum(prob_row) > 0 else np.ones_like(prob_row) / len(prob_row)
+                 # Explicitly re-normalize the probability row before using it
+                 prob_row = prob_row / np.sum(prob_row) if np.sum(prob_row) > 0 else np.ones_like(prob_row) / num_effective
 
             chosen_candidate_effective_idx = np.random.choice(len(effective_candidates_this_round), p=prob_row)
             chosen_candidate_id = effective_candidates_this_round[chosen_candidate_effective_idx]
@@ -223,8 +233,9 @@ def parse_args():
     # Model specific parameters
     model_group = parser.add_argument_group('Transition Model Parameters')
     model_group.add_argument("--initial-beta-weight", type=float, default=1.0, help="Initial weight for ideological distance sensitivity.") # Renamed
-    model_group.add_argument("--beta-increment-per-round", type=float, default=0.05, help="Increment to beta weight per N scaled rounds (for Dynamic Beta).")
-    model_group.add_argument("--n-rounds-for-beta-scaling", type=float, default=10.0, help="Number of rounds over which beta increments fully (for Dynamic Beta).")
+    model_group.add_argument("--beta-increment-amount", type=float, default=0.05, help="Increment to beta weight per N scaled rounds (for Dynamic Beta).")
+    model_group.add_argument("--beta-increment-interval-rounds", type=float, default=10.0, help="Number of rounds over which beta increments fully (for Dynamic Beta).")
+    model_group.add_argument("--enable-dynamic-beta", action='store_true', help="Enable dynamic beta adjustment.")
     model_group.add_argument("--stickiness-factor", type=float, default=0.5, help="Factor for elector stickiness to previous vote.")
     model_group.add_argument("--bandwagon-strength", type=float, default=0.0, help="Strength of the bandwagon effect.")
     model_group.add_argument("--regional-bonus", type=float, default=0.1, help="Bonus for candidates from the same region.")
@@ -247,6 +258,42 @@ def parse_args():
 
     return parser.parse_args()
 
+def model_params_from_args(args: argparse.Namespace) -> Dict[str, Any]:
+    """Extracts model parameters from command line arguments."""
+    params = {
+        "initial_beta_weight": args.initial_beta_weight,
+        "enable_dynamic_beta": args.enable_dynamic_beta,
+        "beta_increment_amount": args.beta_increment_amount, # Pass directly
+        "beta_increment_interval_rounds": int(args.beta_increment_interval_rounds), # Pass directly, ensure int
+        # beta_growth_rate uses TransitionModel's default if not overridden and dynamic beta (growth type) is on
+        "stickiness_factor": args.stickiness_factor,
+        "bandwagon_strength": args.bandwagon_strength,
+        "regional_affinity_bonus": args.regional_bonus,
+        "papabile_weight_factor": args.papabile_weight_factor,
+        "fatigue_penalty_factor": args.fatigue_penalty_factor, # Passed to model init
+        "stop_candidate_threshold_unacceptable_distance": args.stop_candidate_threshold_unacceptable_distance, # Passed to model init
+        "stop_candidate_boost_factor": args.stop_candidate_boost_factor, # Passed to model init
+        "stop_candidate_threat_min_vote_share": args.stop_candidate_threat_min_vote_share # Added for model init
+    }
+
+    if args.enable_dynamic_beta:
+        if args.beta_increment_amount is not None and args.beta_increment_amount != 0:
+            log.info(f"Dynamic Beta Enabled (stepped): Increment Amount={args.beta_increment_amount}, Interval Rounds={int(args.beta_increment_interval_rounds)}.")
+        else:
+            # This case implies beta_growth_rate would be used by the model if > 1.0
+            log.info(f"Dynamic Beta Enabled (likely multiplicative growth): beta_increment_amount is {args.beta_increment_amount}. TransitionModel's default beta_growth_rate will apply if > 1.0.")
+    else:
+        log.info("Dynamic Beta Disabled.")
+
+    if args.enable_candidate_fatigue:
+        log.info(f"Candidate Fatigue Enabled: Threshold Rounds={args.fatigue_threshold_rounds}, Vote Share Threshold={args.fatigue_vote_share_threshold*100:.0f}%, Penalty={args.fatigue_penalty_factor}, Top N Immune={args.fatigue_top_n_immune}")
+    if args.enable_stop_candidate:
+        log.info(f"Stop Candidate Enabled: Unacceptable Distance={args.stop_candidate_threshold_unacceptable_distance}, "
+                 f"Threat Share={args.stop_candidate_threat_min_vote_share*100:.0f}%, "
+                 f"Boost Factor={args.stop_candidate_boost_factor}")
+
+    return params
+
 def main():
     args = parse_args()
 
@@ -263,29 +310,19 @@ def main():
     if args.enable_candidate_fatigue:
         log.info(f"Candidate Fatigue Enabled: Threshold Rounds={args.fatigue_threshold_rounds}, Vote Share Threshold={args.fatigue_vote_share_threshold*100:.0f}%, Penalty={args.fatigue_penalty_factor}, Top N Immune={args.fatigue_top_n_immune}")
     if args.enable_stop_candidate:
-        log.info(f"Stop Candidate Enabled: Unacceptable Distance={args.stop_candidate_threshold_unacceptable_distance}, Threat Share={args.stop_candidate_threat_min_vote_share*100:.0f}%, Boost Factor={args.stop_candidate_boost_factor}")
-    if args.beta_increment_per_round > 0:
-        log.info(f"Dynamic Beta Enabled: Increment={args.beta_increment_per_round} per {args.n_rounds_for_beta_scaling} scaled rounds.")
+        log.info(f"Stop Candidate Enabled: Unacceptable Distance={args.stop_candidate_threshold_unacceptable_distance}, "
+                 f"Threat Share={args.stop_candidate_threat_min_vote_share*100:.0f}%, "
+                 f"Boost Factor={args.stop_candidate_boost_factor}")
+    if args.beta_increment_amount > 0:
+        log.info(f"Dynamic Beta Enabled: Increment={args.beta_increment_amount} per {args.beta_increment_interval_rounds} rounds.")
 
     ingester = ElectorDataIngester(args.elector_data_file)
     elector_data_full = ingester.load_and_prepare_data()
-
     if elector_data_full.empty:
         log.error("Failed to load or prepare elector data. Exiting.")
         return
 
-    model_params_from_args = {
-        'initial_beta_weight': args.initial_beta_weight,
-        'beta_increment_per_round': args.beta_increment_per_round,
-        'n_rounds_for_beta_scaling': args.n_rounds_for_beta_scaling,
-        'stickiness_factor': args.stickiness_factor,
-        'bandwagon_strength': args.bandwagon_strength,
-        'regional_affinity_bonus': args.regional_bonus,
-        'papabile_weight_factor': args.papabile_weight_factor,
-        'fatigue_penalty_factor': args.fatigue_penalty_factor, # Passed to model init
-        'stop_candidate_threshold_unacceptable_distance': args.stop_candidate_threshold_unacceptable_distance, # Passed to model init
-        'stop_candidate_boost_factor': args.stop_candidate_boost_factor # Passed to model init
-    }
+    model_params = model_params_from_args(args)
 
     start_time = time.time()
     results = []
@@ -294,17 +331,16 @@ def main():
         futures = [
             executor.submit(
                 _run_single_simulation_worker, 
-                i, elector_data_full, model_params_from_args,
+                i, elector_data_full, model_params,
                 args.max_rounds, args.supermajority_threshold,
                 args.runoff_rounds, args.runoff_candidates, args.verbose,
                 # Pass new feature flags and specific params to worker
                 args.enable_candidate_fatigue,
                 args.fatigue_threshold_rounds,
                 args.fatigue_vote_share_threshold,
-                args.fatigue_penalty_factor, # This is for model, but fatigue logic in worker needs it too
+                # fatigue_penalty_factor not passed separately, it's in model_params
                 args.fatigue_top_n_immune,
-                args.enable_stop_candidate,
-                args.stop_candidate_threat_min_vote_share # This is for model, via worker
+                args.enable_stop_candidate
             ) for i in range(args.num_simulations)
         ]
         for future in as_completed(futures):
@@ -379,10 +415,13 @@ def main():
         log.error(f"Failed to save results CSV: {e}")
 
     # Save aggregate stats to JSON
+    output_stats_path = Path(args.output_stats)
+    output_stats_path.parent.mkdir(parents=True, exist_ok=True)
+
     try:
-        with open(args.output_stats, 'w') as f:
+        with open(output_stats_path, "w") as f:
             json.dump(aggregate_stats, f, indent=4, default=lambda x: int(x) if isinstance(x, np.integer) else None if x is None or (isinstance(x, float) and np.isnan(x)) else x)
-        log.info(f"Saving aggregate stats to: {args.output_stats}")
+        log.info(f"Saving aggregate stats to: {output_stats_path}")
     except Exception as e:
         log.error(f"Failed to save stats JSON: {e}")
 

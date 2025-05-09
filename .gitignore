@@ -125,7 +125,9 @@ dmypy.json
 data/llm_matched_pairs_conclavoscope.json
 
 # Generated simulation outputs and cache
-data/
+data/*
+!data/plots/
+!data/plots/**
 
 # Node.js dependencies
 node_modules/
