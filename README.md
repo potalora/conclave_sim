@@ -1,4 +1,4 @@
-# Windsurf Conclave Simulation
+# Conclave Simulation
 
 A Monte Carlo simulation engine for modeling papal conclaves and forecasting outcomes based on cardinal elector dynamics, voting rules, and voting behavior models.
 
